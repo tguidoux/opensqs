@@ -42,8 +42,6 @@ error() { echo -e "${RED}❌ $*${NC}" >&2; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CHART_FILE="$REPO_ROOT/deploy/helm/Chart.yaml"
-IMAGE_PUSH_TARGET="//apps/go/server:opensqs_server_image_push"
-IMAGE_LOAD_TARGET="//apps/go/server:opensqs_server_image_platform_transition_load_docker"
 GHCR_REPO="ghcr.io/tguidoux/opensqs/opensqs-server"
 REMOTE_NAME="origin"
 
@@ -270,46 +268,35 @@ fi
 echo ""
 info "${BOLD}Step 4: Build and push OCI image${NC}"
 
+# The image_tags in BUILD.bazel define the repo:tag used by oci_load.
+# We load into Docker, then retag and push with docker — this avoids
+# crane credential issues in the Bazel sandbox.
+IMAGE_LOAD_TARGET="//apps/go/server:opensqs_server_image_platform_transition_load_docker"
+LOCAL_IMAGE="opensqs-server:latest"
+
 if [ "$SKIP_IMAGE" = true ]; then
     warn "Skipping image build and push (--skip-image)"
 else
     if [ "$DRY_RUN" = true ]; then
-        info "[dry-run] Would run: bazel build //apps/go/server:opensqs_server_image"
-        info "[dry-run] Would run: bazel run //apps/go/server:opensqs_server_image_push --stamp --workspace_status=$REPO_ROOT/tools/stable_status.sh"
+        info "[dry-run] Would build and load image: bazel run $IMAGE_LOAD_TARGET"
+        info "[dry-run] Would tag: docker tag $LOCAL_IMAGE ${GHCR_REPO}:${VERSION}"
+        info "[dry-run] Would push: docker push ${GHCR_REPO}:${VERSION}"
+        info "[dry-run] Would tag: docker tag $LOCAL_IMAGE ${GHCR_REPO}:latest"
+        info "[dry-run] Would push: docker push ${GHCR_REPO}:latest"
     else
-        # Create a workspace status file so {{BUILD_EMBED_LABEL}} gets the version
-        STATUS_FILE=$(mktemp /tmp/opensqs-status.XXXXXX.sh)
-        cat > "$STATUS_FILE" <<EOF
-#!/usr/bin/env bash
-echo "BUILD_SCM_TAG $VERSION"
-echo "BUILD_EMBED_LABEL $VERSION"
-EOF
-        chmod +x "$STATUS_FILE"
+        info "Building and loading OCI image into Docker..."
+        bazel run "$IMAGE_LOAD_TARGET"
+        ok "Image loaded into Docker as $LOCAL_IMAGE"
 
-        info "Building multi-arch OCI image..."
-        bazel build //apps/go/server:opensqs_server_image
-        ok "Image built successfully"
-
-        info "Pushing image to GHCR: ${GHCR_REPO}:${VERSION}"
-        bazel run "$IMAGE_PUSH_TARGET" --stamp --workspace_status="$STATUS_FILE"
+        info "Tagging and pushing image to GHCR: ${GHCR_REPO}:${VERSION}"
+        docker tag "$LOCAL_IMAGE" "${GHCR_REPO}:${VERSION}"
+        docker push "${GHCR_REPO}:${VERSION}"
         ok "Image pushed: ${GHCR_REPO}:${VERSION}"
 
-        # Also push 'latest' tag
-        info "Pushing image to GHCR: ${GHCR_REPO}:latest"
-        # Re-run with latest tag by creating a temporary status file
-        LATEST_STATUS_FILE=$(mktemp /tmp/opensqs-status-latest.XXXXXX.sh)
-        cat > "$LATEST_STATUS_FILE" <<EOF
-#!/usr/bin/env bash
-echo "BUILD_SCM_TAG latest"
-echo "BUILD_EMBED_LABEL latest"
-EOF
-        chmod +x "$LATEST_STATUS_FILE"
-
-        bazel run "$IMAGE_PUSH_TARGET" --stamp --workspace_status="$LATEST_STATUS_FILE"
+        info "Tagging and pushing image to GHCR: ${GHCR_REPO}:latest"
+        docker tag "$LOCAL_IMAGE" "${GHCR_REPO}:latest"
+        docker push "${GHCR_REPO}:latest"
         ok "Image pushed: ${GHCR_REPO}:latest"
-
-        # Cleanup temp files
-        rm -f "$STATUS_FILE" "$LATEST_STATUS_FILE"
     fi
 fi
 
