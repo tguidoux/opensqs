@@ -1,77 +1,248 @@
-# OpenSQS Monorepo
+# OpenSQS
 
-## Philosophy
+**An open-source, self-hosted alternative to AWS SQS.** Built in Go, compatible with the AWS SQS API, and designed to be lightweight, fast, and easy to run anywhere.
 
-**Hermetic, reproducible builds.** Everything runs through Bazel to ensure consistent builds anywhere. No "works on my machine" problems. Dependencies are pinned, toolchains are hermetic, and all tools (formatters, linters) are managed through Bazel.
+## Why OpenSQS?
 
-**Go-only by design.** Go for high-performance services and CLI tools. Shared libraries in `pkgs/v1/` provide common functionality across all services.
+AWS SQS is a fantastic managed service, but it locks you into AWS pricing, limits your control over data residency, and adds network latency for workloads running outside AWS. OpenSQS gives you the same SQS API you already know, running on your own infrastructure.
 
-**Service-oriented architecture.** Each service is independently deployable with its own configuration.
+**Purpose:** Provide a drop-in SQS-compatible message queue that teams can self-host — for development, testing, air-gapped environments, or cost optimization.
 
-## Structure
+**Motivation:**
+- **Local development:** Test SQS-dependent code without AWS credentials or network calls
+- **Air-gapped environments:** Run message queues in networks without internet access
+- **Cost control:** Avoid per-request SQS pricing for high-throughput workloads
+- **Data sovereignty:** Keep message data in your own infrastructure
+- **Zero vendor lock-in:** Standard SQS API means no client-side changes when migrating
+
+## Features
+
+- **SQS-compatible API** — Supports both the Query Protocol (XML, form-urlencoded) and JSON Protocol 1.0
+- **Standard queues** — At-least-once delivery with visibility timeouts
+- **Message operations** — Send, receive, delete, change visibility, purge
+- **Queue management** — Create, delete, list, get/set attributes
+- **In-memory storage** — Fast, zero-dependency message store (pluggable backend)
+- **HMAC receipt handles** — Tamper-proof receipt handles signed with a server secret
+- **Strict limits** — Configurable message size, queue depth, and rate limiting
+- **Health checks** — Built-in `/health` endpoint for Kubernetes probes
+- **Graceful shutdown** — Clean in-flight message handling on SIGINT/SIGTERM
+- **Distroless containers** — Multi-arch (arm64/amd64) images for security
+
+## Quickstart
+
+### Prerequisites
+
+- [Bazelisk](https://github.com/bazelbuild/bazelisk) (manages Bazel versions automatically):
+  ```bash
+  brew install bazelisk  # macOS
+  ```
+
+### Run the Server
+
+```bash
+git clone https://github.com/tguidoux/opensqs.git
+cd opensqs
+bazel run //:clean          # Initialize workspace
+bazel run //apps/go/server:opensqs-server
+```
+
+The server starts on `http://localhost:9324`.
+
+### Test with AWS CLI
+
+```bash
+# Point AWS CLI at your local OpenSQS server
+export AWS_ENDPOINT_URL=http://localhost:9324
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+
+# Create a queue
+aws sqs create-queue --queue-name my-queue
+
+# Send a message
+aws sqs send-message --queue-url http://localhost:9324/123456789012/my-queue --message-body "Hello OpenSQS!"
+
+# Receive the message
+aws sqs receive-message --queue-url http://localhost:9324/123456789012/my-queue
+
+# Delete the message (use the receipt handle from receive)
+aws sqs delete-message --queue-url http://localhost:9324/123456789012/my-queue --receipt-handle "<receipt-handle>"
+
+# List queues
+aws sqs list-queues
+```
+
+### Run in Docker
+
+```bash
+bazel run //apps/go/server:opensqs_server_image_platform_transition_load_docker
+docker run -p 9324:9324 opensqs_server_image
+```
+
+## Example Program
+
+A complete Go example demonstrating the queue library API is in [`apps/go/playground/sqs_example`](apps/go/playground/sqs_example/main.go):
+
+```bash
+bazel run //apps/go/playground/sqs_example:sqs_example
+```
+
+This example shows how to:
+- Create a `QueueManager` and queue
+- Send and receive messages with attributes
+- Delete messages after processing
+- List queues, purge, and clean up
+
+## Development
+
+### Project Structure
 
 ```
 opensqs/
-├── apps/               # Applications
-│   └── go/            # Go services and playground
-├── pkgs/v1/           # Shared Go libraries (config, logger, environment)
-└── tools/             # Custom Bazel rules and dev tools
+├── apps/
+│   └── go/
+│       ├── server/              # SQS server (HTTP API, handlers, protocol)
+│       │   ├── main.go          # Entry point
+│       │   ├── config.go        # ServerConfig struct
+│       │   ├── config.yaml      # Local dev configuration
+│       │   ├── handlers/        # Request handlers & dispatch
+│       │   ├── protocol/        # Query & JSON protocol parsers
+│       │   └── health/          # Health check server
+│       └── playground/          # Example programs
+│           ├── cmd_hello_world/
+│           └── sqs_example/     # Queue library usage example
+├── pkgs/v1/
+│   ├── config/                  # YAML config loading with validation
+│   ├── environment/             # Environment enum (LOCAL, STAGING, PROD, AOOSTAR)
+│   ├── logger/                  # Structured logging
+│   └── queue/                   # Queue engine, manager, store, types
+│       ├── queue.go             # Queue struct & operations
+│       ├── manager.go           # QueueManager (lifecycle, lookup, list)
+│       ├── limits.go            # SQS limits enforcement
+│       ├── attributes.go        # Queue attributes
+│       ├── store/               # Pluggable storage interface
+│       │   └── memory/          # In-memory store with HMAC receipts
+│       └── types/                # Message, attributes, constants
+└── tools/                       # Custom Bazel rules & dev tools
 ```
 
-**Custom Bazel Rules:** Use `opensqs_go_*` rules instead of standard rules. These wrap standard rules with project conventions and distroless container support.
-
-## Quick Setup
-
-1. **Install Bazelisk** (manages Bazel versions automatically):
-   ```bash
-   brew install bazelisk  # macOS
-   ```
-
-2. **Clone and setup:**
-   ```bash
-   git clone <repo>
-   cd opensqs
-   bazel run //:clean  # Initialize and format everything
-   ```
-
-3. **That's it.** Bazel handles all toolchains and dependencies hermetically.
-
-## Common Commands
+### Common Commands
 
 ```bash
-# Format and update everything
+# Workspace cleanup (format + regenerate)
 bazel run //:clean
 
-# Language-specific cleanup
-bazel run //:go.clean       # Go: update BUILD files and dependencies
-bazel run //:bazel.clean    # Bazel: format BUILD files with buildifier
+# Go-specific: update BUILD files and dependencies
+bazel run //:go.clean
 
-# Run services
-bazel run //apps/go/playground/cmd_hello_world:cmd_hello_world
+# Bazel formatting
+bazel run //:bazel.clean
 
-# Build and test
+# Regenerate BUILD files after adding Go files
+bazel run //:gazelle
+
+# Build everything
 bazel build //apps/go/...
-bazel test //...
-bazel test //pkgs/v1/config/tests:go_default_test
 
-# Containerize
-bazel run //apps/go/playground/cmd_hello_world:image_load_docker
+# Run all tests
+bazel test //...
+
+# Run the server
+bazel run //apps/go/server:opensqs-server
+
+# Build and load Docker image
+bazel run //apps/go/server:opensqs_server_image_platform_transition_load_docker
 ```
 
-## Adding Dependencies
+### Configuration
 
-**Go:** Add import to code, run `bazel run //:go.clean`, follow buildozer command
+The server reads `config.yaml` by default (override with `CONFIG_PATH` env var):
 
-## Shared Libraries (`pkgs/v1/`)
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 9324
+
+sqs:
+  nodeAddress: "localhost:9324"
+  accountId: "123456789012"
+  region: "us-east-1"
+  storageType: "memory"
+  strictLimits: true
+  serverSecret: "dev-secret-key-change-in-production"
+
+log:
+  level: "info"
+
+environment: "local"
+```
+
+Environments: `LOCAL`, `STAGING`, `PROD`, `AOOSTAR`. Health checks run on port 8001 for non-local environments.
+
+### Startup Queues
+
+You can pre-create queues at server startup by listing them under the `queues` key in `config.yaml`:
+
+```yaml
+queues:
+  - name: "orders"
+    attributes:
+      visibilityTimeout: 60
+      receiveMessageWaitTimeSeconds: 5
+  - name: "notifications"
+  - name: "dead-letter.fifo"
+    attributes:
+      fifoQueue: true
+      contentBasedDeduplication: true
+      visibilityTimeout: 120
+```
+
+Any attributes you omit default to standard SQS values. Available attributes:
+
+| Attribute | Type | Default |
+|-----------|------|---------|
+| `visibilityTimeout` | int | 30 |
+| `delaySeconds` | int | 0 |
+| `maximumMessageSize` | int | 262144 |
+| `messageRetentionPeriod` | int | 345600 |
+| `receiveMessageWaitTimeSeconds` | int | 0 |
+| `fifoQueue` | bool | false |
+| `contentBasedDeduplication` | bool | false |
+
+### Adding Go Dependencies
+
+1. Add the import to your Go code
+2. Add the dependency to `go.mod`
+3. Run `bazel run //:go.clean`
+4. Follow any buildozer command prompts
+
+### Testing
+
+Tests live in `tests/` subfolders within each package:
+
+```bash
+# Run all tests
+bazel test //...
+
+# Run specific package tests
+bazel test //pkgs/v1/queue/tests:go_default_test
+bazel test //apps/go/server/handlers/tests:go_default_test
+```
+
+## Shared Libraries
 
 | Package | Description |
 |---------|-------------|
-| `config/` | Configuration loading from YAML with schema validation |
-| `environment/` | Environment enum (LOCAL, STAGING, PROD, AOOSTAR) |
-| `logger/` | Structured logging for Go |
+| `pkgs/v1/config/` | YAML config loading with schema validation |
+| `pkgs/v1/environment/` | Environment enum (LOCAL, STAGING, PROD, AOOSTAR) |
+| `pkgs/v1/logger/` | Structured logging (contextual & uncontextual) |
+| `pkgs/v1/queue/` | Queue engine, manager, in-memory store, types |
 
-## Configuration
+## Build System
 
-**Config:** Environment-specific YAML files (`config.yaml` for local, `values.<env>.yaml` for deployments). Secrets via AWS SSM Parameter Store.
+OpenSQS uses **Bazel** with custom `opensqs_go_*` rules for hermetic, reproducible builds. All toolchains, dependencies, and formatters are managed through Bazel — no "works on my machine" problems.
 
-**Environments:** LOCAL, STAGING, PROD, AOOSTAR
+## License
+
+This project is open-source. See the repository for license details.
