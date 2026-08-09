@@ -42,21 +42,21 @@ func fail(format string, args ...any) {
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const (
-	ghcrRepo          = "ghcr.io/tguidoux/opensqs/opensqs-server"
-	remoteName        = "origin"
-	imagePushTarget   = "//apps/go/server:opensqs_server_image_push"
-	chartFilePath     = "deploy/helm/Chart.yaml"
-	versionRegex      = `^v[0-9]+\.[0-9]+\.[0-9]+$`
+	ghcrRepo        = "ghcr.io/tguidoux/opensqs/opensqs-server"
+	remoteName      = "origin"
+	imagePushTarget = "//apps/go/server:opensqs_server_image_push"
+	chartFilePath   = "deploy/helm/Chart.yaml"
+	versionRegex    = `^v[0-9]+\.[0-9]+\.[0-9]+$`
 )
 
 // ─── Flags ───────────────────────────────────────────────────────────────────
 
 type flags struct {
-	version      string
-	skipImage    bool
-	skipTag      bool
-	skipRelease  bool
-	dryRun       bool
+	version     string
+	skipImage   bool
+	skipTag     bool
+	skipRelease bool
+	dryRun      bool
 }
 
 func parseFlags(args []string) flags {
