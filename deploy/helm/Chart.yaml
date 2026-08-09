@@ -2,8 +2,8 @@ apiVersion: v2
 name: opensqs
 description: OpenSQS - A self-hosted Amazon SQS-compatible message queue server
 type: application
-version: "0.0.3"
-appVersion: "v0.0.3"
+version: "0.0.4"
+appVersion: "v0.0.4"
 keywords:
   - sqs
   - queue

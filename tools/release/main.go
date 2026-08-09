@@ -143,9 +143,11 @@ func getRepoRoot() string {
 }
 
 func getLatestTag() string {
-	output, err := runCommand("git", "describe", "--tags", "--abbrev=0")
+	// Use --sort=-v:refname to get the highest semver tag, regardless of commit position
+	output, err := runCommand("git", "tag", "--sort=-v:refname")
 	if err == nil && output != "" {
-		return output
+		lines := strings.Split(output, "\n")
+		return lines[0]
 	}
 
 	// No git tags — fall back to Helm chart version
