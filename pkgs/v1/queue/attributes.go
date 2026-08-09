@@ -1,0 +1,206 @@
+package queue
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
+)
+
+// QueueAttributes holds all SQS queue attributes with defaults and validation.
+type QueueAttributes struct {
+	VisibilityTimeout             int    `yaml:"visibilityTimeout"`
+	DelaySeconds                  int    `yaml:"delaySeconds"`
+	MaximumMessageSize            int    `yaml:"maximumMessageSize"`
+	MessageRetentionPeriod        int    `yaml:"messageRetentionPeriod"`
+	ReceiveMessageWaitTimeSeconds int    `yaml:"receiveMessageWaitTimeSeconds"`
+	QueueArn                      string `yaml:"queueArn"`
+	Policy                        string `yaml:"policy"`
+	RedrivePolicy                 string `yaml:"redrivePolicy"`
+	FifoQueue                     bool   `yaml:"fifoQueue"`
+	ContentBasedDeduplication     bool   `yaml:"contentBasedDeduplication"`
+	KmsMasterKeyId                string `yaml:"kmsMasterKeyId"`
+	KmsDataKeyReusePeriodSeconds  int    `yaml:"kmsDataKeyReusePeriodSeconds"`
+	DeduplicationScope            string `yaml:"deduplicationScope"`
+	FifoThroughputLimit           string `yaml:"fifoThroughputLimit"`
+	SqsManagedSseEnabled          bool   `yaml:"sqsManagedSseEnabled"`
+}
+
+// NewDefaultQueueAttributes returns attributes initialized with SQS defaults.
+func NewDefaultQueueAttributes() *QueueAttributes {
+	return &QueueAttributes{
+		VisibilityTimeout:             types.DefaultVisibilityTimeout,
+		DelaySeconds:                  types.DefaultDelaySeconds,
+		MaximumMessageSize:            types.DefaultMaximumMessageSize,
+		MessageRetentionPeriod:        types.DefaultMessageRetentionPeriod,
+		ReceiveMessageWaitTimeSeconds: types.DefaultReceiveMessageWaitTime,
+		SqsManagedSseEnabled:          true,
+	}
+}
+
+// GetAttribute returns the value of a named attribute as a string.
+func (a *QueueAttributes) GetAttribute(name string) (string, bool) {
+	switch name {
+	case types.AttributeVisibilityTimeout:
+		return strconv.Itoa(a.VisibilityTimeout), true
+	case types.AttributeDelaySeconds:
+		return strconv.Itoa(a.DelaySeconds), true
+	case types.AttributeMaximumMessageSize:
+		return strconv.Itoa(a.MaximumMessageSize), true
+	case types.AttributeMessageRetentionPeriod:
+		return strconv.Itoa(a.MessageRetentionPeriod), true
+	case types.AttributeReceiveMessageWaitTimeSeconds:
+		return strconv.Itoa(a.ReceiveMessageWaitTimeSeconds), true
+	case types.AttributeQueueArn:
+		return a.QueueArn, true
+	case types.AttributePolicy:
+		return a.Policy, true
+	case types.AttributeRedrivePolicy:
+		return a.RedrivePolicy, true
+	case types.AttributeFifoQueue:
+		return strconv.FormatBool(a.FifoQueue), true
+	case types.AttributeContentBasedDeduplication:
+		return strconv.FormatBool(a.ContentBasedDeduplication), true
+	case types.AttributeKmsMasterKeyId:
+		return a.KmsMasterKeyId, true
+	case types.AttributeKmsDataKeyReusePeriodSeconds:
+		return strconv.Itoa(a.KmsDataKeyReusePeriodSeconds), true
+	case types.AttributeDeduplicationScope:
+		return a.DeduplicationScope, true
+	case types.AttributeFifoThroughputLimit:
+		return a.FifoThroughputLimit, true
+	case types.AttributeSqsManagedSseEnabled:
+		return strconv.FormatBool(a.SqsManagedSseEnabled), true
+	default:
+		return "", false
+	}
+}
+
+// SetAttribute sets the value of a named attribute from a string.
+func (a *QueueAttributes) SetAttribute(name, value string) error {
+	switch name {
+	case types.AttributeVisibilityTimeout:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid VisibilityTimeout: %s", value)
+		}
+		a.VisibilityTimeout = v
+	case types.AttributeDelaySeconds:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid DelaySeconds: %s", value)
+		}
+		a.DelaySeconds = v
+	case types.AttributeMaximumMessageSize:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid MaximumMessageSize: %s", value)
+		}
+		a.MaximumMessageSize = v
+	case types.AttributeMessageRetentionPeriod:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid MessageRetentionPeriod: %s", value)
+		}
+		a.MessageRetentionPeriod = v
+	case types.AttributeReceiveMessageWaitTimeSeconds:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid ReceiveMessageWaitTimeSeconds: %s", value)
+		}
+		a.ReceiveMessageWaitTimeSeconds = v
+	case types.AttributeQueueArn:
+		a.QueueArn = value
+	case types.AttributePolicy:
+		a.Policy = value
+	case types.AttributeRedrivePolicy:
+		// Validate that the RedrivePolicy is valid JSON with required fields
+		rp, err := dlq.ParseRedrivePolicy(value)
+		if err != nil {
+			return fmt.Errorf("invalid RedrivePolicy: %w", err)
+		}
+		if rp.DeadLetterTargetArn == "" {
+			return fmt.Errorf("invalid RedrivePolicy: deadLetterTargetArn is required")
+		}
+		if rp.MaxReceiveCount < 1 || rp.MaxReceiveCount > 1000 {
+			return fmt.Errorf("invalid RedrivePolicy: maxReceiveCount must be between 1 and 1000")
+		}
+		a.RedrivePolicy = value
+	case types.AttributeFifoQueue:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid FifoQueue: %s", value)
+		}
+		a.FifoQueue = v
+	case types.AttributeContentBasedDeduplication:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid ContentBasedDeduplication: %s", value)
+		}
+		a.ContentBasedDeduplication = v
+	case types.AttributeKmsMasterKeyId:
+		a.KmsMasterKeyId = value
+	case types.AttributeKmsDataKeyReusePeriodSeconds:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid KmsDataKeyReusePeriodSeconds: %s", value)
+		}
+		a.KmsDataKeyReusePeriodSeconds = v
+	case types.AttributeDeduplicationScope:
+		a.DeduplicationScope = value
+	case types.AttributeFifoThroughputLimit:
+		a.FifoThroughputLimit = value
+	case types.AttributeSqsManagedSseEnabled:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid SqsManagedSseEnabled: %s", value)
+		}
+		a.SqsManagedSseEnabled = v
+	default:
+		return fmt.Errorf("unknown attribute: %s", name)
+	}
+	return nil
+}
+
+// AllAttributes returns all attributes as a map of name to string value.
+func (a *QueueAttributes) AllAttributes() map[string]string {
+	result := make(map[string]string)
+	for _, name := range AllAttributeNames() {
+		if v, ok := a.GetAttribute(name); ok {
+			result[name] = v
+		}
+	}
+	return result
+}
+
+// AllAttributeNames returns the list of all settable attribute names.
+func AllAttributeNames() []string {
+	return []string{
+		types.AttributeVisibilityTimeout,
+		types.AttributeDelaySeconds,
+		types.AttributeMaximumMessageSize,
+		types.AttributeMessageRetentionPeriod,
+		types.AttributeReceiveMessageWaitTimeSeconds,
+		types.AttributeQueueArn,
+		types.AttributePolicy,
+		types.AttributeRedrivePolicy,
+		types.AttributeFifoQueue,
+		types.AttributeContentBasedDeduplication,
+		types.AttributeKmsMasterKeyId,
+		types.AttributeKmsDataKeyReusePeriodSeconds,
+		types.AttributeDeduplicationScope,
+		types.AttributeFifoThroughputLimit,
+		types.AttributeSqsManagedSseEnabled,
+	}
+}
+
+// GetQueueArn returns the queue ARN.
+func (a *QueueAttributes) GetQueueArn() string {
+	return a.QueueArn
+}
+
+// GetRedrivePolicy returns the redrive policy JSON string.
+func (a *QueueAttributes) GetRedrivePolicy() string {
+	return a.RedrivePolicy
+}
