@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   # -- Image repository
-  repository: registry.opensqs.io/opensqs-server
+  repository: ghcr.io/tguidoux/opensqs/opensqs-server
   # -- Image pull policy
   pullPolicy: IfNotPresent
   # -- Image tag (defaults to chart appVersion)

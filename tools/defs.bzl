@@ -2,4 +2,4 @@
 Global constants for the opensqs project.
 """
 
-REGISTRY = "registry.opensqs.io"
+REGISTRY = "ghcr.io/tguidoux/opensqs"

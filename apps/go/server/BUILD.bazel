@@ -44,4 +44,5 @@ opensqs_go_image(
     name = "opensqs_server_image",
     binary = ":opensqs-server",
     image_tags = ["opensqs-server:latest"],
+    registry = "ghcr.io/tguidoux/opensqs",
 )
