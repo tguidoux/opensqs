@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
@@ -63,7 +64,10 @@ func (qm *QueueManager) CreateQueue(name string, attrs *QueueAttributes) (*Queue
 
 	if attrs.RedrivePolicy != "" {
 		rp, err := dlq.ParseRedrivePolicy(attrs.RedrivePolicy)
-		if err == nil && rp.MaxReceiveCount > 0 {
+		if err != nil {
+			return nil, fmt.Errorf("invalid redrive policy for queue %q: %w", name, err)
+		}
+		if rp.MaxReceiveCount > 0 {
 			storeCfg.MaxReceiveCount = rp.MaxReceiveCount
 			// Set up the redrive callback that sends messages to the DLQ
 			dlqArn := rp.DeadLetterTargetArn
@@ -74,7 +78,10 @@ func (qm *QueueManager) CreateQueue(name string, attrs *QueueAttributes) (*Queue
 	}
 
 	// Create the message store via the factory
-	msgStore := qm.storeFactory(name, attrs.VisibilityTimeout, qm.serverSecret, storeCfg)
+	msgStore, err := qm.storeFactory(name, attrs.VisibilityTimeout, qm.serverSecret, storeCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store for queue %q: %w", name, err)
+	}
 
 	q := NewQueue(name, attrs, msgStore)
 	qm.queues[name] = q
@@ -92,7 +99,13 @@ func (qm *QueueManager) DeleteQueue(name string) error {
 		return NewQueueDoesNotExist(fmt.Sprintf("The specified queue does not exist: %s", name))
 	}
 
-	q.Store().Close()
+	if err := q.Store().Close(); err != nil {
+		// Log the error but still remove the queue from the map
+		// to avoid leaking entries on shutdown
+		delete(qm.queues, name)
+		return fmt.Errorf("failed to close store for queue %q: %w", name, err)
+	}
+
 	delete(qm.queues, name)
 
 	return nil
@@ -145,13 +158,13 @@ func (qm *QueueManager) ListQueueURLs(prefix string) []string {
 }
 
 // PurgeQueue removes all messages from a queue.
-func (qm *QueueManager) PurgeQueue(name string) error {
+func (qm *QueueManager) PurgeQueue(ctx context.Context, name string) error {
 	q, err := qm.LookupQueue(name)
 	if err != nil {
 		return err
 	}
 
-	return q.Store().Purge(context.Background())
+	return q.Store().Purge(ctx)
 }
 
 // QueueURL returns the URL for a queue name.
@@ -177,9 +190,12 @@ func (qm *QueueManager) LookupQueueByArn(arn string) (*Queue, error) {
 }
 
 // redriveMessage sends a message to the dead-letter queue identified by the given ARN.
+// Errors are silently ignored to match SQS behavior (redrive is best-effort).
 func (qm *QueueManager) redriveMessage(dlqArn string, msg *types.Message) {
 	dlqQueue, err := qm.LookupQueueByArn(dlqArn)
 	if err != nil {
+		// DLQ doesn't exist — cannot redrive, message is lost
+		// This matches AWS SQS behavior where a misconfigured DLQ silently drops messages
 		return
 	}
 
@@ -211,6 +227,9 @@ func (qm *QueueManager) Shutdown(ctx context.Context) error {
 
 	var lastErr error
 	for name, q := range qm.queues {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("shutdown interrupted: %w (last error: %v)", err, lastErr)
+		}
 		if err := q.Store().Close(); err != nil {
 			lastErr = fmt.Errorf("failed to close store for queue %s: %w", name, err)
 		}
@@ -227,20 +246,29 @@ func attributesMatch(a, b *QueueAttributes) bool {
 		a.MessageRetentionPeriod == b.MessageRetentionPeriod &&
 		a.ReceiveMessageWaitTimeSeconds == b.ReceiveMessageWaitTimeSeconds &&
 		a.FifoQueue == b.FifoQueue &&
-		a.ContentBasedDeduplication == b.ContentBasedDeduplication
+		a.ContentBasedDeduplication == b.ContentBasedDeduplication &&
+		a.RedrivePolicy == b.RedrivePolicy &&
+		a.KmsMasterKeyId == b.KmsMasterKeyId &&
+		a.SqsManagedSseEnabled == b.SqsManagedSseEnabled
 }
 
 // extractQueueNameFromURL extracts the queue name from a queue URL.
 // URLs are in the format: http://host/accountId/queueName
 func extractQueueNameFromURL(queueURL string) string {
+	if queueURL == "" {
+		return ""
+	}
+	// Strip query string
+	if idx := strings.Index(queueURL, "?"); idx >= 0 {
+		queueURL = queueURL[:idx]
+	}
+	// Strip trailing slash
+	queueURL = strings.TrimSuffix(queueURL, "/")
 	// Find the last segment after the last /
 	for i := len(queueURL) - 1; i >= 0; i-- {
 		if queueURL[i] == '/' {
 			return queueURL[i+1:]
 		}
 	}
-	return ""
+	return queueURL
 }
-
-// Ensure imports are used
-var _ = fmt.Sprintf

@@ -25,6 +25,8 @@ type QueryBatchEntry struct {
 	ID                      string
 	MessageBody             string
 	DelaySeconds            int
+	ReceiptHandle           string
+	VisibilityTimeout       int
 	MessageAttributes       map[string]MessageAttributeInput
 	MessageDeduplicationID  string
 	MessageGroupID          string
@@ -37,6 +39,9 @@ type MessageAttributeInput struct {
 	StringValue string
 	BinaryValue string // base64-encoded
 }
+
+// maxAttributeParams is the maximum number of Attribute.N.Name/Value pairs to parse.
+const maxAttributeParams = 20
 
 // ParseQueryRequest parses an AWS Query Protocol form-urlencoded body.
 // The body is expected to be in application/x-www-form-urlencoded format.
@@ -68,7 +73,7 @@ func parseQueryAttributes(values url.Values) map[string]string {
 	attrs := make(map[string]string)
 
 	// Handle Attribute.N.Name / Attribute.N.Value pattern
-	for i := 1; i <= 20; i++ {
+	for i := 1; i <= maxAttributeParams; i++ {
 		nameKey := fmt.Sprintf("Attribute.%d.Name", i)
 		valueKey := fmt.Sprintf("Attribute.%d.Value", i)
 
@@ -159,11 +164,9 @@ func parseBatchEntries(values url.Values) []QueryBatchEntry {
 		case "MessageGroupId":
 			entry.MessageGroupID = value
 		case "ReceiptHandle":
-			// For DeleteMessageBatch and ChangeMessageVisibilityBatch
-			entry.ID = value // Will be set as ID if not already set
+			entry.ReceiptHandle = value
 		case "VisibilityTimeout":
-			// For ChangeMessageVisibilityBatch — stored in DelaySeconds field for now
-			// (the handler will interpret based on action)
+			entry.VisibilityTimeout, _ = strconv.Atoi(value)
 		case "MessageAttribute":
 			// Pattern: <Prefix>.<Idx>.MessageAttribute.<AttrIdx>.<SubField>[.ValueSubField]
 			if len(parts) < 5 {
@@ -361,7 +364,7 @@ func (r *QueryRequest) GetPrefix() string {
 // GetAttributeNames extracts the AttributeName.N parameters for GetQueueAttributes.
 func (r *QueryRequest) GetAttributeNames() []string {
 	var names []string
-	for i := 1; i <= 20; i++ {
+	for i := 1; i <= maxAttributeParams; i++ {
 		key := fmt.Sprintf("AttributeName.%d", i)
 		if v := r.Params.Get(key); v != "" {
 			names = append(names, v)
@@ -463,7 +466,7 @@ func (r *QueryRequest) GetMessageAttributes() map[string]types.MessageAttribute 
 // GetMessageAttributeNames extracts MessageAttributeName.N parameters for ReceiveMessage.
 func (r *QueryRequest) GetMessageAttributeNames() []string {
 	var names []string
-	for i := 1; i <= 20; i++ {
+	for i := 1; i <= maxAttributeParams; i++ {
 		key := fmt.Sprintf("MessageAttributeName.%d", i)
 		if v := r.Params.Get(key); v != "" {
 			names = append(names, v)
@@ -639,6 +642,3 @@ func (r *QueryRequest) GetMaxNumberOfMessagesPerSecond() int {
 	v, _ := strconv.Atoi(s)
 	return v
 }
-
-// Ensure types import is used
-var _ = types.SQSVersion

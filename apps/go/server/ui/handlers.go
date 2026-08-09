@@ -1,12 +1,12 @@
 package ui
 
 import (
-	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -150,6 +150,10 @@ type metricMoveTask struct {
 
 // handleIndex renders the queue list page.
 func (h *handler) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
@@ -183,11 +187,19 @@ func (h *handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // handleCreateQueueForm renders the create queue form.
 func (h *handler) handleCreateQueueForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	h.renderTemplate(w, "create_queue.html", pageData{Title: "Create Queue"})
 }
 
 // handleCreateQueue handles POST /queues/create.
 func (h *handler) handleCreateQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/queues/new?error=Invalid+form+data", http.StatusSeeOther)
 		return
@@ -238,7 +250,15 @@ func (h *handler) handleCreateQueue(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/queues/new?error=Invalid+maxReceiveCount", http.StatusSeeOther)
 			return
 		}
-		attrs.RedrivePolicy = fmt.Sprintf(`{"deadLetterTargetArn":"%s","maxReceiveCount":%d}`, dlqArn, maxReceiveCount)
+		rpJSON, err := json.Marshal(map[string]any{
+			"deadLetterTargetArn": dlqArn,
+			"maxReceiveCount":     maxReceiveCount,
+		})
+		if err != nil {
+			http.Redirect(w, r, "/queues/new?error=Failed+to+create+queue", http.StatusSeeOther)
+			return
+		}
+		attrs.RedrivePolicy = string(rpJSON)
 	}
 
 	if _, err := h.manager.CreateQueue(queueName, attrs); err != nil {
@@ -248,7 +268,7 @@ func (h *handler) handleCreateQueue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.log.Infof("created queue: %s", queueName)
-	http.Redirect(w, r, "/queues/"+queueName+"?success=Queue+created", http.StatusSeeOther)
+	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Queue+created", http.StatusSeeOther)
 }
 
 // handleQueueRoutes dispatches queue-specific routes.
@@ -316,7 +336,7 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 	attrPairs := buildAttrPairs(attrs, q)
 
 	// Receive messages for display (non-destructive peek via short visibility timeout)
-	msgs, _ := q.Store().ReceiveMessages(context.Background(), 10, 1, 0)
+	msgs, _ := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
 	msgDisplays := make([]messageDisplay, 0, len(msgs))
 	for _, m := range msgs {
 		msgDisplays = append(msgDisplays, messageDisplay{
@@ -358,7 +378,7 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 func (h *handler) handleDeleteQueue(w http.ResponseWriter, r *http.Request, queueName string) {
 	if err := h.manager.DeleteQueue(queueName); err != nil {
 		h.log.Errorf("failed to delete queue %q: %v", queueName, err)
-		http.Redirect(w, r, "/?error="+fmt.Sprintf("Failed+to+delete+queue+%s", queueName), http.StatusSeeOther)
+		http.Redirect(w, r, "/?error="+url.QueryEscape(fmt.Sprintf("Failed to delete queue %s", queueName)), http.StatusSeeOther)
 		return
 	}
 	h.log.Infof("deleted queue: %s", queueName)
@@ -369,16 +389,16 @@ func (h *handler) handleDeleteQueue(w http.ResponseWriter, r *http.Request, queu
 func (h *handler) handlePurgeQueue(w http.ResponseWriter, r *http.Request, queueName string) {
 	q, err := h.manager.LookupQueue(queueName)
 	if err != nil {
-		http.Redirect(w, r, "/queues/"+queueName+"?error=Queue+not+found", http.StatusSeeOther)
+		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Queue+not+found", http.StatusSeeOther)
 		return
 	}
-	if err := q.Store().Purge(context.Background()); err != nil {
+	if err := q.Store().Purge(r.Context()); err != nil {
 		h.log.Errorf("failed to purge queue %q: %v", queueName, err)
-		http.Redirect(w, r, "/queues/"+queueName+"?error=Failed+to+purge", http.StatusSeeOther)
+		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Failed+to+purge", http.StatusSeeOther)
 		return
 	}
 	h.log.Infof("purged queue: %s", queueName)
-	http.Redirect(w, r, "/queues/"+queueName+"?success=Queue+purged", http.StatusSeeOther)
+	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Queue+purged", http.StatusSeeOther)
 }
 
 // handleSendMessage sends a message to a queue from form data.
@@ -417,14 +437,14 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 		}
 	}
 
-	if err := q.Store().SendMessage(context.Background(), msg, delaySeconds); err != nil {
+	if err := q.Store().SendMessage(r.Context(), msg, delaySeconds); err != nil {
 		h.log.Errorf("failed to send message to queue %q: %v", queueName, err)
-		http.Redirect(w, r, "/queues/"+queueName+"?error=Failed+to+send+message", http.StatusSeeOther)
+		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Failed+to+send+message", http.StatusSeeOther)
 		return
 	}
 
 	h.log.Infof("sent message to queue: %s", queueName)
-	http.Redirect(w, r, "/queues/"+queueName+"?success=Message+sent", http.StatusSeeOther)
+	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Message+sent", http.StatusSeeOther)
 }
 
 // handleDeleteMessage deletes a specific message by receipt handle.
@@ -435,14 +455,14 @@ func (h *handler) handleDeleteMessage(w http.ResponseWriter, r *http.Request, qu
 		return
 	}
 
-	if err := q.Store().DeleteMessage(context.Background(), receiptHandle); err != nil {
+	if err := q.Store().DeleteMessage(r.Context(), receiptHandle); err != nil {
 		h.log.Errorf("failed to delete message from queue %q: %v", queueName, err)
-		http.Redirect(w, r, "/queues/"+queueName+"?error=Failed+to+delete+message", http.StatusSeeOther)
+		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Failed+to+delete+message", http.StatusSeeOther)
 		return
 	}
 
 	h.log.Infof("deleted message from queue: %s", queueName)
-	http.Redirect(w, r, "/queues/"+queueName+"?success=Message+deleted", http.StatusSeeOther)
+	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Message+deleted", http.StatusSeeOther)
 }
 
 // --- JSON API handlers ---
@@ -483,7 +503,7 @@ func (h *handler) handleAPIQueueMessages(w http.ResponseWriter, r *http.Request)
 
 	// If sub-path is "messages", return message list
 	if len(parts) == 2 && parts[1] == "messages" {
-		msgs, _ := q.Store().ReceiveMessages(context.Background(), 10, 1, 0)
+		msgs, _ := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
 		displays := make([]messageDisplay, 0, len(msgs))
 		for _, m := range msgs {
 			displays = append(displays, messageDisplay{

@@ -24,6 +24,17 @@ const refreshStates = [
 ];
 let refreshStateIdx = 1;
 
+// Escape HTML to prevent XSS when inserting user-controlled data into innerHTML
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function updateRefreshUI() {
     const state = refreshStates[refreshStateIdx];
     const label = document.querySelector('.refresh-label');
@@ -54,18 +65,20 @@ function doRefresh() {
                 queues.forEach(q => {
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-queue', q.Name);
+                    const safeName = escapeHtml(q.Name);
+                    const safeURL = escapeHtml(q.URL);
                     tr.innerHTML = `
-                        <td data-label="Name"><a href="/queues/${encodeURIComponent(q.Name)}">${q.Name}</a></td>
+                        <td data-label="Name"><a href="/queues/${encodeURIComponent(q.Name)}">${safeName}</a></td>
                         <td data-label="Type">${q.IsFifo ? '<span class="badge badge-fifo">FIFO</span>' : '<span class="badge badge-standard">Standard</span>'}</td>
                         <td data-label="Available" class="num">${q.Available}</td>
                         <td data-label="In-Flight" class="num">${q.InFlight}</td>
                         <td data-label="Delayed" class="num">${q.Delayed}</td>
-                        <td data-label="URL" class="url-cell">${q.URL}</td>
+                        <td data-label="URL" class="url-cell">${safeURL}</td>
                         <td data-label="Actions" class="action-cell">
-                            <form method="POST" action="/queues/${encodeURIComponent(q.Name)}/purge" style="display:inline" onsubmit="return confirm('Purge all messages from ${q.Name}?')">
+                            <form method="POST" action="/queues/${encodeURIComponent(q.Name)}/purge" style="display:inline" onsubmit="return confirm('Purge all messages from ${safeName}?')">
                                 <button type="submit" class="btn btn-sm btn-warning">Purge</button>
                             </form>
-                            <form method="POST" action="/queues/${encodeURIComponent(q.Name)}/delete" style="display:inline" onsubmit="return confirm('Delete queue ${q.Name}? This cannot be undone.')">
+                            <form method="POST" action="/queues/${encodeURIComponent(q.Name)}/delete" style="display:inline" onsubmit="return confirm('Delete queue ${safeName}? This cannot be undone.')">
                                 <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                             </form>
                         </td>
@@ -86,11 +99,13 @@ function doRefresh() {
                 tbody.innerHTML = '';
                 msgs.forEach(m => {
                     const tr = document.createElement('tr');
+                    const safeMsgID = escapeHtml(m.MessageID);
+                    const safeBody = escapeHtml(m.Body);
                     tr.innerHTML = `
-                        <td data-label="Message ID" class="mono">${m.MessageID}</td>
-                        <td data-label="Body" class="body-cell">${m.Body}</td>
+                        <td data-label="Message ID" class="mono">${safeMsgID}</td>
+                        <td data-label="Body" class="body-cell">${safeBody}</td>
                         <td data-label="Receive Count" class="num">${m.ReceiveCount}</td>
-                        <td data-label="Sent">${m.SentTimestamp}</td>
+                        <td data-label="Sent">${escapeHtml(m.SentTimestamp)}</td>
                         <td data-label="Actions">
                             <form method="POST" action="/queues/${encodeURIComponent(queueName)}/messages/${encodeURIComponent(m.ReceiptHandle)}/delete" style="display:inline" onsubmit="return confirm('Delete this message?')">
                                 <button type="submit" class="btn btn-sm btn-danger">Delete</button>
@@ -108,35 +123,35 @@ function doRefresh() {
             .then(r => r.json())
             .then(data => {
                 refreshMetricsTable('api-requests-table', data.APIRequests, (item) => `
-                    <td>${item.Action}</td>
-                    <td><span class="badge badge-standard">${item.Protocol}</span></td>
+                    <td>${escapeHtml(item.Action)}</td>
+                    <td><span class="badge badge-standard">${escapeHtml(item.Protocol)}</span></td>
                     <td class="num">${item.Count}</td>
                 `, 3);
 
                 refreshMetricsTable('queue-sizes-table', data.QueueSizes, (item) => `
-                    <td>${item.Queue}</td>
-                    <td><span class="badge ${item.Type === 'available' ? 'badge-standard' : 'badge-fifo'}">${item.Type}</span></td>
+                    <td>${escapeHtml(item.Queue)}</td>
+                    <td><span class="badge ${item.Type === 'available' ? 'badge-standard' : 'badge-fifo'}">${escapeHtml(item.Type)}</span></td>
                     <td class="num">${item.Size}</td>
                 `, 3);
 
                 refreshMetricsTable('messages-sent-table', data.MessagesSent, (item) => `
-                    <td>${item.Queue}</td>
+                    <td>${escapeHtml(item.Queue)}</td>
                     <td class="num">${item.Count}</td>
                 `, 2);
 
                 refreshMetricsTable('messages-received-table', data.MessagesReceived, (item) => `
-                    <td>${item.Queue}</td>
+                    <td>${escapeHtml(item.Queue)}</td>
                     <td class="num">${item.Count}</td>
                 `, 2);
 
                 refreshMetricsTable('messages-deleted-table', data.MessagesDeleted, (item) => `
-                    <td>${item.Queue}</td>
+                    <td>${escapeHtml(item.Queue)}</td>
                     <td class="num">${item.Count}</td>
                 `, 2);
 
                 refreshMetricsTable('move-tasks-table', data.MoveTaskMessages, (item) => `
-                    <td class="url-cell">${item.SourceARN}</td>
-                    <td class="url-cell">${item.DestinationARN}</td>
+                    <td class="url-cell">${escapeHtml(item.SourceARN)}</td>
+                    <td class="url-cell">${escapeHtml(item.DestinationARN)}</td>
                     <td class="num">${item.Count}</td>
                 `, 3);
 

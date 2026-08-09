@@ -205,6 +205,7 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 			s.mu.Unlock()
 			return nil, fmt.Errorf("failed to query messages: %w", err)
 		}
+		defer rows.Close()
 
 		type candidate struct {
 			msg           *types.Message
@@ -279,7 +280,6 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 				firstReceived: time.UnixMilli(firstReceived),
 			})
 		}
-		rows.Close()
 
 		if len(candidates) == 0 {
 			// No messages available
@@ -443,9 +443,11 @@ func (s *SQLiteStore) ApproximateNumberOfMessages() int {
 	now := store.Now().UnixMilli()
 	tableName := s.tableName()
 	var count int
-	s.db.QueryRow(fmt.Sprintf(
+	if err := s.db.QueryRow(fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s WHERE visible_at <= ?`, tableName,
-	), now).Scan(&count)
+	), now).Scan(&count); err != nil {
+		return 0
+	}
 	return count
 }
 
@@ -457,9 +459,11 @@ func (s *SQLiteStore) ApproximateNumberOfMessagesNotVisible() int {
 	now := store.Now().UnixMilli()
 	tableName := s.tableName()
 	var count int
-	s.db.QueryRow(fmt.Sprintf(
+	if err := s.db.QueryRow(fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s WHERE visible_at > ? AND receipt_handle != ''`, tableName,
-	), now).Scan(&count)
+	), now).Scan(&count); err != nil {
+		return 0
+	}
 	return count
 }
 
@@ -471,9 +475,11 @@ func (s *SQLiteStore) ApproximateNumberOfMessagesDelayed() int {
 	now := store.Now().UnixMilli()
 	tableName := s.tableName()
 	var count int
-	s.db.QueryRow(fmt.Sprintf(
+	if err := s.db.QueryRow(fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s WHERE visible_at > ? AND receipt_handle = ''`, tableName,
-	), now).Scan(&count)
+	), now).Scan(&count); err != nil {
+		return 0
+	}
 	return count
 }
 
@@ -533,7 +539,10 @@ func (s *SQLiteStore) generateReceiptHandle(messageID string, now time.Time) str
 // generateNonce creates a random hex string.
 func generateNonce() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based nonce if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(b)
 }
 

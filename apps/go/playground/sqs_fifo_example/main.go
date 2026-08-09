@@ -31,8 +31,8 @@ func main() {
 
 	// ─── Setup ────────────────────────────────────────────────────────────
 
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg)
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
 
 	manager := queue.NewQueueManager(
@@ -149,7 +149,7 @@ func main() {
 	fmt.Println("\n━━━ 6. Content-Based Deduplication ━━━")
 
 	// Purge the queue first
-	_ = manager.PurgeQueue("orders.fifo")
+	_ = manager.PurgeQueue(context.Background(), "orders.fifo")
 
 	dedupMsg1 := &types.Message{
 		MessageID:      "dedup-001",
@@ -172,7 +172,7 @@ func main() {
 	// ─── Cleanup ──────────────────────────────────────────────────────────
 
 	fmt.Println("\n━━━ Cleanup ━━━")
-	_ = manager.PurgeQueue("orders.fifo")
+	_ = manager.PurgeQueue(context.Background(), "orders.fifo")
 	_ = manager.DeleteQueue("orders.fifo")
 	fmt.Println("✅ Deleted FIFO queue")
 

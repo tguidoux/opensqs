@@ -35,8 +35,8 @@ type testServer struct {
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg)
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
 	manager := queue.NewQueueManager("localhost:0", "123456789012", "us-east-1", []byte("test-secret"), factory)
 	limits := queue.NewLimits(queue.StrictMode)

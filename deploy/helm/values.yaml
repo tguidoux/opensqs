@@ -1,7 +1,7 @@
 # OpenSQS Helm Chart Values
 # This file contains default configuration values for the OpenSQS Helm chart.
 
-# -- Number of replicas (note: only meaningful with shared storage like SQLite on PVC or BadgerDB on PVC)
+# -- Number of replicas (warning: with memory storage, each pod has its own independent state — use sqlite/badger with PVC for shared state)
 replicaCount: 1
 
 image:
@@ -70,7 +70,7 @@ opensqs:
     # -- External node address (set to the service DNS or ingress host)
     nodeAddress: ""
     # -- AWS account ID used in queue URLs
-    accountId: "000000000000"
+    accountId: "123456789012"
     # -- AWS region
     region: "us-east-1"
     # -- Storage type: "memory", "sqlite", or "badger"

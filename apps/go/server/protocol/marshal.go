@@ -476,10 +476,6 @@ func MarshalJSONResponse(v any) ([]byte, error) {
 }
 
 // NewRequestID generates a request ID placeholder.
-// In production, this should be a UUID.
 func NewRequestID() string {
 	return types.EmptyRequestID
 }
-
-// Ensure fmt import is used
-var _ = fmt.Sprintf

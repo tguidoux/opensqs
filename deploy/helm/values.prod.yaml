@@ -32,12 +32,12 @@ opensqs:
 
   sqs:
     nodeAddress: ""  # Set to the external endpoint
-    accountId: "000000000000"
+    accountId: "123456789012"
     region: "us-east-1"
     storageType: "badger"  # Use persistent storage in production
     badgerPath: "/data/badger"
     strictLimits: true
-    serverSecret: ""  # Set via existingSecret in production
+    serverSecret: ""  # REQUIRED: Set via existingSecret or this field — server will fail to start with empty secret
 
   logLevel: "info"
 
@@ -71,8 +71,8 @@ opensqs:
     autoCreate: false
     startup: []
 
-# Use an existing secret for the server secret
-existingSecret: ""  # Set to the secret name containing "serverSecret" key
+# Use an existing secret for the server secret (required in production)
+existingSecret: ""  # Set to the secret name containing "serverSecret" key — server will fail to start without a secret
 
 persistence:
   enabled: true
@@ -121,4 +121,4 @@ livenessProbe:
 
 podDisruptionBudget:
   enabled: true
-  minAvailable: 1
+  maxUnavailable: 1  # Use maxUnavailable instead of minAvailable to allow evictions with replicaCount=1

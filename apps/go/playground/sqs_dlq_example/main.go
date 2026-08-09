@@ -30,8 +30,8 @@ func main() {
 
 	// ─── Setup ────────────────────────────────────────────────────────────
 
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg)
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
 
 	manager := queue.NewQueueManager(
@@ -163,8 +163,8 @@ func main() {
 	// ─── Cleanup ──────────────────────────────────────────────────────────
 
 	fmt.Println("\n━━━ Cleanup ━━━")
-	_ = manager.PurgeQueue("orders")
-	_ = manager.PurgeQueue("failed-orders")
+	_ = manager.PurgeQueue(context.Background(), "orders")
+	_ = manager.PurgeQueue(context.Background(), "failed-orders")
 	_ = manager.DeleteQueue("orders")
 	_ = manager.DeleteQueue("failed-orders")
 	fmt.Println("✅ Deleted queues")

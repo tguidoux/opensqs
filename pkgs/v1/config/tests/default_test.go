@@ -266,7 +266,7 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, "http://localhost:9324", config.LOCAL_AWS_SQS_ENDPOINT_URL)
 	assert.Equal(t, "http://localhost:8000", config.LOCAL_AWS_SSM_ENDPOINT_URL)
 
-	assert.Equal(t, "http://192.168.1.119:9000", config.AOOSTAR_AWS_S3_ENDPOINT_URL)
-	assert.Equal(t, "http://192.168.1.153:9324", config.AOOSTAR_AWS_SQS_ENDPOINT_URL)
-	assert.Equal(t, "http://192.168.1.153:8000", config.AOOSTAR_AWS_SSM_ENDPOINT_URL)
+	assert.Equal(t, "http://minio.aoostar.local:9000", config.AOOSTAR_AWS_S3_ENDPOINT_URL)
+	assert.Equal(t, "http://opensqs.aoostar.local:9324", config.AOOSTAR_AWS_SQS_ENDPOINT_URL)
+	assert.Equal(t, "http://ssm.aoostar.local:8000", config.AOOSTAR_AWS_SSM_ENDPOINT_URL)
 }

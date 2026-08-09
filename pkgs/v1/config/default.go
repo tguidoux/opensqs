@@ -6,9 +6,9 @@ const LOCAL_AWS_S3_ENDPOINT_URL string = "http://localhost:9000"
 const LOCAL_AWS_SQS_ENDPOINT_URL string = "http://localhost:9324"
 const LOCAL_AWS_SSM_ENDPOINT_URL string = "http://localhost:8000"
 
-const AOOSTAR_AWS_S3_ENDPOINT_URL string = "http://192.168.1.119:9000"
-const AOOSTAR_AWS_SQS_ENDPOINT_URL string = "http://192.168.1.153:9324"
-const AOOSTAR_AWS_SSM_ENDPOINT_URL string = "http://192.168.1.153:8000"
+const AOOSTAR_AWS_S3_ENDPOINT_URL string = "http://minio.aoostar.local:9000"
+const AOOSTAR_AWS_SQS_ENDPOINT_URL string = "http://opensqs.aoostar.local:9324"
+const AOOSTAR_AWS_SSM_ENDPOINT_URL string = "http://ssm.aoostar.local:8000"
 
 func GetRegion(env environment.Environment) string {
 	switch env {

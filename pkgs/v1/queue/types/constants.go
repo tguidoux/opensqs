@@ -87,12 +87,26 @@ const (
 
 // Max SQS limits.
 const (
-	MaxVisibilityTimeout      = 43200   // 12 hours
-	MaxMessageRetentionPeriod = 1209600 // 14 days
-	MaxMaximumMessageSize     = 262144  // 256 KiB
-	MaxDelaySeconds           = 900     // 15 minutes
-	MaxReceiveMessageWaitTime = 20
-	MaxMessageBodySize        = 262144 // 256 KiB
-	MaxNumberOfMessages       = 10
-	MaxBatchEntries           = 10
+	MaxVisibilityTimeout            = 43200   // 12 hours
+	MaxMessageRetentionPeriod       = 1209600 // 14 days
+	MaxMaximumMessageSize           = 262144  // 256 KiB
+	MaxDelaySeconds                 = 900     // 15 minutes
+	MaxReceiveMessageWaitTime       = 20
+	MaxMessageBodySize              = 262144 // 256 KiB
+	MaxNumberOfMessages             = 10
+	MaxBatchEntries                 = 10
+	MaxQueueNameLength              = 80
+	MaxDeduplicationIdLength        = 128
+	MaxMessageGroupIdLength         = 128
+	MaxKmsDataKeyReusePeriodSeconds = 86400 // 24 hours
+)
+
+// Min SQS limits.
+const (
+	MinMessageRetentionPeriod       = 60   // 1 minute
+	MinMaximumMessageSize           = 1024 // 1 KiB
+	MinVisibilityTimeout            = 0
+	MinDelaySeconds                 = 0
+	MinReceiveMessageWaitTime       = 0
+	MinKmsDataKeyReusePeriodSeconds = 60 // 1 minute
 )

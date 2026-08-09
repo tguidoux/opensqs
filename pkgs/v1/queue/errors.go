@@ -1,8 +1,6 @@
 package queue
 
 import (
-	"fmt"
-
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
@@ -166,6 +164,3 @@ func NewUnsupportedOperation(msg string) *SQSError {
 		ErrorMessageValue: msg,
 	}
 }
-
-// Ensure the fmt import is used.
-var _ = fmt.Sprintf

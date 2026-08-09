@@ -31,8 +31,8 @@ func main() {
 
 	// ─── Setup ────────────────────────────────────────────────────────────
 
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg)
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
 
 	manager := queue.NewQueueManager(

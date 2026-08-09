@@ -161,7 +161,7 @@ func TestStartTask_WithExplicitDestination(t *testing.T) {
 	task, ok := mtm.GetTask(task.TaskHandle)
 	require.True(t, ok)
 	assert.Equal(t, dlq.MoveTaskStatusCompleted, task.Status)
-	assert.Equal(t, 3, task.MovedMessages)
+	assert.Equal(t, 3, task.MovedMessages())
 }
 
 func TestStartTask_AutoDiscoverDestination(t *testing.T) {
@@ -231,7 +231,7 @@ func TestStartTask_RateLimiting(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	task, _ = mtm.GetTask(task.TaskHandle)
-	assert.LessOrEqual(t, task.MovedMessages, 1)
+	assert.LessOrEqual(t, task.MovedMessages(), 1)
 
 	// Poll for completion — 3 messages at 2/sec = ~1.5s, but allow up to 10s
 	deadline := time.Now().Add(10 * time.Second)
@@ -245,7 +245,7 @@ func TestStartTask_RateLimiting(t *testing.T) {
 
 	task, _ = mtm.GetTask(task.TaskHandle)
 	assert.Equal(t, dlq.MoveTaskStatusCompleted, task.Status)
-	assert.Equal(t, 3, task.MovedMessages)
+	assert.Equal(t, 3, task.MovedMessages())
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +284,13 @@ func TestCancelTask_Success(t *testing.T) {
 	moved, err := mtm.CancelTask(task.TaskHandle)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, moved, 0)
+
+	// Wait for the background goroutine to process the cancellation
+	// and update the status from CANCELLING to CANCELLED
+	require.Eventually(t, func() bool {
+		task, ok := mtm.GetTask(task.TaskHandle)
+		return ok && task.Status == dlq.MoveTaskStatusCancelled
+	}, 2*time.Second, 10*time.Millisecond)
 
 	// Verify task status
 	task, ok := mtm.GetTask(task.TaskHandle)

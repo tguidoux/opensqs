@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -30,11 +31,30 @@ func GlobalRateLimiter(rps float64, burst int) Middleware {
 // per queue. The queue name is extracted from the URL path
 // (/{accountId}/{queueName}). Each queue gets its own token bucket.
 // When the rate is exceeded, it responds with 429 Too Many Requests.
+// A background goroutine periodically removes idle limiters to prevent
+// unbounded memory growth.
 func PerQueueRateLimiter(rps float64, burst int) Middleware {
 	var (
 		mu       sync.Mutex
 		limiters = make(map[string]*rate.Limiter)
 	)
+
+	// Clean up idle limiters every 5 minutes to prevent unbounded growth.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			mu.Lock()
+			// Remove limiters that have fully replenished their burst budget,
+			// meaning they haven't been used recently.
+			for name, l := range limiters {
+				if l.Tokens() >= float64(burst) {
+					delete(limiters, name)
+				}
+			}
+			mu.Unlock()
+		}
+	}()
 
 	getLimiter := func(queueName string) *rate.Limiter {
 		mu.Lock()

@@ -11,6 +11,9 @@ import (
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
+// maxRequestBodySize limits the request body to 1 MiB to prevent DoS via large bodies.
+const maxRequestBodySize = 1 << 20 // 1 MiB
+
 // handleSQSRequest processes an incoming SQS API request.
 // It detects the protocol (Query or JSON), parses the request,
 // dispatches to the action handler, and writes the response.
@@ -23,7 +26,7 @@ func handleSQSRequest(w http.ResponseWriter, r *http.Request, handler *handlers.
 
 	if protoType == handlers.JSONProtocol {
 		// JSON protocol: parse body
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodySize))
 		if err != nil {
 			writeErrorResponse(w, queue.NewInternalError("failed to read request body"), proto, "")
 			return
@@ -40,7 +43,7 @@ func handleSQSRequest(w http.ResponseWriter, r *http.Request, handler *handlers.
 		// Query protocol: params can be in URL query string (GET) or body (POST)
 		var queryStr string
 		if r.Method == http.MethodPost {
-			body, err := io.ReadAll(r.Body)
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodySize))
 			if err != nil {
 				writeErrorResponse(w, queue.NewInternalError("failed to read request body"), proto, "")
 				return

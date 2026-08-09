@@ -35,7 +35,6 @@ func main() {
 			configPath = config.DefaultConfigPath
 		} else {
 			configPath = "/apps/go/server/config.yaml"
-			os.Setenv(config.DefaultConfigEnvVar, configPath)
 		}
 	}
 	cfg := config.NewConfigFromEnv[ServerConfig]().Config
@@ -74,12 +73,8 @@ func main() {
 		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 			log.Fatalf("failed to set SQLite WAL mode: %v", err)
 		}
-		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) store.Store {
-			s, err := sqlite.NewSQLiteStore(db, queueName, visibilityTimeout, serverSecret, sc)
-			if err != nil {
-				log.Fatalf("failed to create SQLite store for queue %q: %v", queueName, err)
-			}
-			return s
+		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
+			return sqlite.NewSQLiteStore(db, queueName, visibilityTimeout, serverSecret, sc)
 		}
 		defer db.Close()
 
@@ -88,18 +83,14 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to open BadgerDB database: %v", err)
 		}
-		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) store.Store {
-			s, err := badger.NewBadgerStore(db, queueName, visibilityTimeout, serverSecret, sc)
-			if err != nil {
-				log.Fatalf("failed to create BadgerDB store for queue %q: %v", queueName, err)
-			}
-			return s
+		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
+			return badger.NewBadgerStore(db, queueName, visibilityTimeout, serverSecret, sc)
 		}
 		defer db.Close()
 
 	default:
-		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) store.Store {
-			return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, sc)
+		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
+			return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, sc), nil
 		}
 	}
 
@@ -162,10 +153,12 @@ func main() {
 	}
 
 	httpServer := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler:      sqsHandler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler:           sqsHandler,
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	if sqsTLS != nil {
 		httpServer.TLSConfig = sqsTLS
@@ -260,7 +253,8 @@ func main() {
 			err = httpServer.ListenAndServe()
 		}
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server failed to start: %v", err)
+			log.Errorf("server failed to start: %v", err)
+			os.Exit(1)
 		}
 	}()
 

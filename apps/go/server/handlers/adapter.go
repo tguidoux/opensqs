@@ -3,6 +3,8 @@ package handlers
 import (
 	"encoding/base64"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/tguidoux/opensqs/apps/go/server/protocol"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -68,6 +70,8 @@ func (a *QueryRequestAdapter) GetBatchEntries() []BatchEntry {
 			ID:                      e.ID,
 			MessageBody:             e.MessageBody,
 			DelaySeconds:            e.DelaySeconds,
+			ReceiptHandle:           e.ReceiptHandle,
+			VisibilityTimeout:       e.VisibilityTimeout,
 			MessageAttributes:       convertQueryMsgAttrs(e.MessageAttributes),
 			MessageDeduplicationID:  e.MessageDeduplicationID,
 			MessageGroupID:          e.MessageGroupID,
@@ -206,6 +210,11 @@ func DetectProtocol(r *http.Request) (ProtocolType, string) {
 	// JSON protocol is identified by X-Amz-Target header
 	if targetHeader != "" {
 		return JSONProtocol, targetHeader
+	}
+
+	// Strip charset from content type (e.g., "application/x-www-form-urlencoded; charset=utf-8")
+	if idx := strings.Index(contentType, ";"); idx != -1 {
+		contentType = strings.TrimSpace(contentType[:idx])
 	}
 
 	// Default to Query protocol for form-urlencoded
@@ -652,34 +661,10 @@ func buildJSONMessage(msg *types.Message) protocol.JSONMessage {
 
 // formatTimestamp converts a time.Time to milliseconds since epoch string.
 func formatTimestamp(t interface{ UnixMilli() int64 }) string {
-	return formatInt64(t.UnixMilli())
+	return strconv.FormatInt(t.UnixMilli(), 10)
 }
 
 // formatInt converts an int to a string.
 func formatInt(i int) string {
-	return formatInt64(int64(i))
-}
-
-// formatInt64 converts an int64 to a string.
-func formatInt64(i int64) string {
-	// Avoid strconv to keep imports minimal
-	if i == 0 {
-		return "0"
-	}
-	negative := i < 0
-	if negative {
-		i = -i
-	}
-	var buf [20]byte
-	pos := len(buf)
-	for i > 0 {
-		pos--
-		buf[pos] = byte('0' + i%10)
-		i /= 10
-	}
-	if negative {
-		pos--
-		buf[pos] = '-'
-	}
-	return string(buf[pos:])
+	return strconv.FormatInt(int64(i), 10)
 }

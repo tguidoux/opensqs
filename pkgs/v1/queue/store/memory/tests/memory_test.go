@@ -137,10 +137,9 @@ func TestReceiveMultipleMessages(t *testing.T) {
 
 func TestVisibilityTimeoutExpiry(t *testing.T) {
 	// Override time for this test
-	originalNow := store.Now
 	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	store.Now = func() time.Time { return baseTime }
-	defer func() { store.Now = originalNow }()
+	store.SetNowFunc(func() time.Time { return baseTime })
+	defer store.SetNowFunc(func() time.Time { return time.Now().UTC() })
 
 	s := memory.NewMemoryStore("test-queue", 1, []byte("test-secret"), store.StoreConfig{})
 	defer s.Close()

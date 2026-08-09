@@ -220,6 +220,11 @@ func (s *MemoryStore) receiveMessage(mm *memoryMessage, visibilityTimeout int, n
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
+		// Skip if store was closed after timer fired
+		if s.closed {
+			return
+		}
+
 		// Check if message should be redrived to a dead-letter queue
 		if s.maxReceiveCount > 0 && mm.receiveCount >= s.maxReceiveCount && s.redriveFunc != nil {
 			// Redrive the message — remove from store and send to DLQ
@@ -246,7 +251,8 @@ func (s *MemoryStore) receiveMessage(mm *memoryMessage, visibilityTimeout int, n
 	mm.msg.ReceivedTimestamp = now
 	mm.msg.ApproximateFirstReceiveTimestamp = mm.firstReceived
 
-	return mm.msg
+	// Return a copy to prevent callers from mutating internal state
+	return copyMessage(mm.msg)
 }
 
 // DeleteMessage removes a message by receipt handle.
@@ -378,6 +384,7 @@ func (s *MemoryStore) Purge(ctx context.Context) error {
 	s.dedupCache = make(map[string]time.Time)
 	s.messageGroups = make(map[string][]*memoryMessage)
 	s.inFlightGroups = make(map[string]bool)
+	s.sequenceCounter = 0
 	s.notifyWaiters()
 	return nil
 }
@@ -430,7 +437,10 @@ func (s *MemoryStore) generateReceiptHandle(messageID string, now time.Time) str
 // generateNonce creates a random hex string.
 func generateNonce() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based nonce if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -444,10 +454,20 @@ func (s *MemoryStore) cleanExpiredDedupEntries() {
 	}
 }
 
-// computeContentBasedDedupID generates a deduplication ID from the message body using MD5.
+// computeContentBasedDedupID generates a deduplication ID from the message body using SHA-256.
 func computeContentBasedDedupID(body string) string {
 	h := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(h[:])
+}
+
+// copyMessage creates a shallow copy of a Message to prevent callers from
+// mutating the store's internal state.
+func copyMessage(src *types.Message) *types.Message {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
 }
 
 // removeFromMessageGroup removes a message from its group tracking slice.

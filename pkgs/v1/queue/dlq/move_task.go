@@ -2,8 +2,11 @@ package dlq
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
@@ -49,9 +52,15 @@ type MoveTask struct {
 	DestinationArn               string
 	Status                       MoveTaskStatus
 	MaxNumberOfMessagesPerSecond int
-	MovedMessages                int
+	movedMessages                atomic.Int64
 	StartedAt                    time.Time
-	Cancelled                    chan struct{}
+	cancelled                    chan struct{}
+}
+
+// MovedMessages returns the number of messages moved so far.
+// This method is thread-safe.
+func (t *MoveTask) MovedMessages() int {
+	return int(t.movedMessages.Load())
 }
 
 // MoveTaskManager manages the lifecycle of message move tasks.
@@ -129,7 +138,7 @@ func (mtm *MoveTaskManager) StartTask(sourceArn, destinationArn string, maxRate 
 		Status:                       MoveTaskStatusRunning,
 		MaxNumberOfMessagesPerSecond: maxRate,
 		StartedAt:                    time.Now().UTC(),
-		Cancelled:                    make(chan struct{}),
+		cancelled:                    make(chan struct{}),
 	}
 
 	mtm.mu.Lock()
@@ -153,14 +162,15 @@ func (mtm *MoveTaskManager) CancelTask(taskHandle string) (int, error) {
 	}
 
 	if task.Status != MoveTaskStatusRunning {
-		return task.MovedMessages, nil
+		return int(task.movedMessages.Load()), nil
 	}
 
+	// Mark as cancelling and signal the background goroutine.
+	// The goroutine will set the final Cancelled status when it stops.
 	task.Status = MoveTaskStatusCancelling
-	close(task.Cancelled)
-	task.Status = MoveTaskStatusCancelled
+	close(task.cancelled)
 
-	return task.MovedMessages, nil
+	return int(task.movedMessages.Load()), nil
 }
 
 // ListTasks returns all move tasks for the given source ARN.
@@ -200,7 +210,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 
 	for {
 		select {
-		case <-task.Cancelled:
+		case <-task.cancelled:
 			mtm.setTaskStatus(task, MoveTaskStatusCancelled)
 			return
 		case <-ctx.Done():
@@ -224,7 +234,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 
 		for _, msg := range messages {
 			select {
-			case <-task.Cancelled:
+			case <-task.cancelled:
 				mtm.setTaskStatus(task, MoveTaskStatusCancelled)
 				return
 			default:
@@ -235,25 +245,24 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 				<-ticker.C
 			}
 
-			// Delete from source first (using the receipt handle from ReceiveMessages)
-			if err := sourceQueue.Store().DeleteMessage(ctx, msg.ReceiptHandle); err != nil {
-				// If we can't delete, skip this message
-				continue
-			}
-
-			// Reset message state for redelivery (same as redriveMessage)
+			// Send to destination first to avoid message loss.
+			// If the send fails, the message stays in the source queue.
 			msg.ReceiptHandle = ""
 			msg.IsVisible = true
 			msg.ApproximateReceiveCount = 0
 
 			if err := destQueue.Store().SendMessage(ctx, msg, 0); err != nil {
-				// Log and continue — partial failures are acceptable
+				// Send failed — message remains in source queue (not deleted)
 				continue
 			}
 
-			mtm.mu.Lock()
-			task.MovedMessages++
-			mtm.mu.Unlock()
+			// Now safe to delete from source
+			if err := sourceQueue.Store().DeleteMessage(ctx, msg.ReceiptHandle); err != nil {
+				// Delete failed — message may be delivered twice (at-least-once)
+				// This is acceptable per SQS semantics
+			}
+
+			task.movedMessages.Add(1)
 		}
 	}
 }
@@ -265,7 +274,12 @@ func (mtm *MoveTaskManager) setTaskStatus(task *MoveTask, status MoveTaskStatus)
 	mtm.mu.Unlock()
 }
 
-// generateTaskHandle creates a unique task handle.
+// generateTaskHandle creates a unique task handle using crypto/rand.
 func generateTaskHandle() string {
-	return fmt.Sprintf("%x", time.Now().UnixNano())
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }

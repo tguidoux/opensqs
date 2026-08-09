@@ -22,46 +22,27 @@ func ParseRedrivePolicy(jsonStr string) (*RedrivePolicy, error) {
 		return nil, fmt.Errorf("empty redrive policy")
 	}
 
-	// First try parsing with MaxReceiveCount as a string (AWS format)
+	// Use json.Number to handle both string and number formats for maxReceiveCount
 	var raw struct {
-		DeadLetterTargetArn string `json:"deadLetterTargetArn"`
-		MaxReceiveCount     string `json:"maxReceiveCount"`
+		DeadLetterTargetArn string      `json:"deadLetterTargetArn"`
+		MaxReceiveCount     json.Number `json:"maxReceiveCount"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
-		// Try with MaxReceiveCount as a number
-		var rawNum struct {
-			DeadLetterTargetArn string `json:"deadLetterTargetArn"`
-			MaxReceiveCount     int    `json:"maxReceiveCount"`
-		}
-		if err2 := json.Unmarshal([]byte(jsonStr), &rawNum); err2 != nil {
-			return nil, fmt.Errorf("invalid redrive policy JSON: %w", err)
-		}
-		return &RedrivePolicy{
-			DeadLetterTargetArn: rawNum.DeadLetterTargetArn,
-			MaxReceiveCount:     rawNum.MaxReceiveCount,
-		}, nil
+		return nil, fmt.Errorf("invalid redrive policy JSON: %w", err)
 	}
 
-	count, err := strconv.Atoi(raw.MaxReceiveCount)
+	if raw.DeadLetterTargetArn == "" {
+		return nil, fmt.Errorf("redrive policy missing deadLetterTargetArn")
+	}
+
+	count, err := raw.MaxReceiveCount.Int64()
 	if err != nil {
-		// If string parse fails, the count might already be a number
-		// Try unmarshalling as a number directly
-		var rawNum struct {
-			DeadLetterTargetArn string `json:"deadLetterTargetArn"`
-			MaxReceiveCount     int    `json:"maxReceiveCount"`
-		}
-		if err2 := json.Unmarshal([]byte(jsonStr), &rawNum); err2 != nil {
-			return nil, fmt.Errorf("invalid maxReceiveCount in redrive policy: %w", err)
-		}
-		return &RedrivePolicy{
-			DeadLetterTargetArn: rawNum.DeadLetterTargetArn,
-			MaxReceiveCount:     rawNum.MaxReceiveCount,
-		}, nil
+		return nil, fmt.Errorf("invalid maxReceiveCount in redrive policy: %w", err)
 	}
 
 	return &RedrivePolicy{
 		DeadLetterTargetArn: raw.DeadLetterTargetArn,
-		MaxReceiveCount:     count,
+		MaxReceiveCount:     int(count),
 	}, nil
 }
 

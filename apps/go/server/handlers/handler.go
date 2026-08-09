@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/tguidoux/opensqs/apps/go/server/metrics"
@@ -242,10 +243,17 @@ func (h *Handler) HandleRequest(ctx context.Context, req Request, proto Protocol
 
 // extractQueueNameFromURL extracts the queue name from a queue URL.
 // URLs are in the format: http://host/accountId/queueName
+// Handles trailing slashes and query strings.
 func extractQueueNameFromURL(queueURL string) string {
 	if queueURL == "" {
 		return ""
 	}
+	// Strip query string
+	if idx := strings.Index(queueURL, "?"); idx >= 0 {
+		queueURL = queueURL[:idx]
+	}
+	// Strip trailing slash
+	queueURL = strings.TrimSuffix(queueURL, "/")
 	// Find the last segment after the last /
 	for i := len(queueURL) - 1; i >= 0; i-- {
 		if queueURL[i] == '/' {

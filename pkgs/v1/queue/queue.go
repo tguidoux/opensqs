@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -44,14 +45,21 @@ func (q *Queue) Store() store.Store {
 	return q.store
 }
 
-// Tags returns the queue tags.
+// Tags returns a copy of the queue tags to prevent external mutation.
 func (q *Queue) Tags() map[string]string {
-	return q.tags
+	out := make(map[string]string, len(q.tags))
+	for k, v := range q.tags {
+		out[k] = v
+	}
+	return out
 }
 
-// SetTags sets the queue tags.
+// SetTags sets the queue tags. The tags map is copied to avoid external mutation.
 func (q *Queue) SetTags(tags map[string]string) {
-	q.tags = tags
+	q.tags = make(map[string]string, len(tags))
+	for k, v := range tags {
+		q.tags[k] = v
+	}
 }
 
 // IsFifo returns true if this is a FIFO queue.
@@ -70,8 +78,17 @@ func (q *Queue) GetRedrivePolicy() string {
 }
 
 // URL returns the full URL for this queue.
+// If nodeAddress includes a scheme (e.g. "https://"), it is used;
+// otherwise "http://" is assumed.
 func (q *Queue) URL(nodeAddress, accountID string) string {
-	return fmt.Sprintf("http://%s/%s/%s", nodeAddress, accountID, q.name)
+	scheme := "http"
+	if strings.HasPrefix(nodeAddress, "https://") {
+		scheme = "https"
+		nodeAddress = strings.TrimPrefix(nodeAddress, "https://")
+	} else {
+		nodeAddress = strings.TrimPrefix(nodeAddress, "http://")
+	}
+	return fmt.Sprintf("%s://%s/%s/%s", scheme, nodeAddress, accountID, q.name)
 }
 
 // ARN returns the ARN for this queue.

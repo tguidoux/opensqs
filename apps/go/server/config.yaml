@@ -14,6 +14,8 @@ sqs:
   # sqlitePath: "/data/opensqs.db"  # Uncomment and set storageType to "sqlite" for SQLite persistence
   # badgerPath: "/data/badger"      # Uncomment and set storageType to "badger" for BadgerDB persistence
   strictLimits: true
+  # NOTE: For local development only. In production, set via environment variable
+  # SQS__SERVERSECRET or mount a secret. Never commit real secrets to source control.
   serverSecret: "dev-secret-key-change-in-production"
 
 log:

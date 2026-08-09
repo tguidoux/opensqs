@@ -1,6 +1,7 @@
 package queue_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,8 +13,8 @@ import (
 )
 
 func newTestManager() *queue.QueueManager {
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg)
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
 	return queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)
 }
@@ -211,13 +212,13 @@ func TestPurgeQueue(t *testing.T) {
 	require.NotNil(t, q)
 
 	// Purge should work on empty queue
-	err = qm.PurgeQueue("test-queue")
+	err = qm.PurgeQueue(context.Background(), "test-queue")
 	require.NoError(t, err)
 }
 
 func TestPurgeQueueNotFound(t *testing.T) {
 	qm := newTestManager()
 
-	err := qm.PurgeQueue("nonexistent")
+	err := qm.PurgeQueue(context.Background(), "nonexistent")
 	assert.Error(t, err)
 }

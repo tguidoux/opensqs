@@ -40,7 +40,10 @@ func NewServer(port int, manager *queue.QueueManager, log logger.LoggerInterface
 	mux.HandleFunc("/metrics", h.handleMetrics)
 
 	// Static assets
-	staticSub, _ := fs.Sub(staticFS, "static")
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(fmt.Sprintf("failed to create static sub-filesystem: %v", err))
+	}
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
 
 	// JSON API endpoints for auto-refresh
@@ -48,12 +51,17 @@ func NewServer(port int, manager *queue.QueueManager, log logger.LoggerInterface
 	mux.HandleFunc("/api/queues/", h.handleAPIQueueMessages)
 	mux.HandleFunc("/api/metrics", h.handleAPIMetrics)
 
+	// Wrap with security headers
+	securedMux := withSecurityHeaders(mux)
+
 	s := &Server{
 		server: &http.Server{
-			Addr:         fmt.Sprintf(":%d", port),
-			Handler:      mux,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			Addr:              fmt.Sprintf(":%d", port),
+			Handler:           securedMux,
+			ReadTimeout:       10 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		},
 		log: log,
 	}
@@ -90,4 +98,16 @@ func (s *Server) Stop(ctx context.Context) error {
 // This is primarily useful for testing with httptest.
 func (s *Server) Handler() http.Handler {
 	return s.server.Handler
+}
+
+// withSecurityHeaders wraps an http.Handler with standard security headers.
+func withSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;")
+		next.ServeHTTP(w, r)
+	})
 }

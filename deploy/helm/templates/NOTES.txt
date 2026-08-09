@@ -8,7 +8,11 @@ OpenSQS has been deployed!
   Web UI:   http://{{ .host }}:{{ $.Values.service.uiPort }}
 {{- end }}
 {{- else }}
+  {{- if eq .Values.service.type "LoadBalancer" }}
   export SQS_HOST=$(kubectl get svc {{ include "opensqs.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+  {{- else }}
+  export SQS_HOST={{ include "opensqs.fullname" . }}.{{ .Release.Namespace }}.svc
+  {{- end }}
   SQS API:  http://$SQS_HOST:{{ .Values.service.port }}
   Web UI:   http://$SQS_HOST:{{ .Values.service.uiPort }}
 {{- end }}

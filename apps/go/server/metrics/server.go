@@ -27,10 +27,12 @@ func NewServer(port int, tlsCfg *tls.Config) *Server {
 
 	s := &Server{
 		server: &http.Server{
-			Addr:         fmt.Sprintf(":%d", port),
-			Handler:      mux,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
+			Addr:              fmt.Sprintf(":%d", port),
+			Handler:           mux,
+			ReadTimeout:       10 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		},
 	}
 

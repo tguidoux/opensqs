@@ -95,9 +95,9 @@ AWS endpoint URLs for local and AOOSTAR environments:
 | `LOCAL_AWS_S3_ENDPOINT_URL` | `http://localhost:9000` |
 | `LOCAL_AWS_SQS_ENDPOINT_URL` | `http://localhost:9324` |
 | `LOCAL_AWS_SSM_ENDPOINT_URL` | `http://localhost:8000` |
-| `AOOSTAR_AWS_S3_ENDPOINT_URL` | `http://192.168.1.119:9000` |
-| `AOOSTAR_AWS_SQS_ENDPOINT_URL` | `http://192.168.1.153:9324` |
-| `AOOSTAR_AWS_SSM_ENDPOINT_URL` | `http://192.168.1.153:8000` |
+| `AOOSTAR_AWS_S3_ENDPOINT_URL` | `http://minio.aoostar.local:9000` |
+| `AOOSTAR_AWS_SQS_ENDPOINT_URL` | `http://opensqs.aoostar.local:9324` |
+| `AOOSTAR_AWS_SSM_ENDPOINT_URL` | `http://ssm.aoostar.local:8000` |
 
 ### Endpoint Functions
 

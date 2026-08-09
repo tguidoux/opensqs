@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	tlsconfig "github.com/tguidoux/opensqs/apps/go/server/tls"
 	environment "github.com/tguidoux/opensqs/pkgs/v1/environment"
 )
@@ -160,6 +162,32 @@ type RateLimitConfig struct {
 
 // Validate implements config.ConfigI[ServerConfig].
 func (c ServerConfig) Validate() error {
+	if c.SQS.AccountID == "" {
+		return fmt.Errorf("sqs.accountId is required")
+	}
+	if c.SQS.Region == "" {
+		return fmt.Errorf("sqs.region is required")
+	}
+	if c.SQS.NodeAddress == "" {
+		return fmt.Errorf("sqs.nodeAddress is required")
+	}
+	switch c.SQS.StorageType {
+	case "", "memory", "sqlite", "badger":
+	default:
+		return fmt.Errorf("sqs.storageType must be one of: memory, sqlite, badger (got %q)", c.SQS.StorageType)
+	}
+	if c.SQS.StorageType == "sqlite" && c.SQS.SQLitePath == "" {
+		return fmt.Errorf("sqs.sqlitePath is required when storageType is sqlite")
+	}
+	if c.SQS.StorageType == "badger" && c.SQS.BadgerPath == "" {
+		return fmt.Errorf("sqs.badgerPath is required when storageType is badger")
+	}
+	if c.Server.Port < 0 || c.Server.Port > 65535 {
+		return fmt.Errorf("server.port must be between 0 and 65535")
+	}
+	if c.SQS.ServerSecret == "" {
+		return fmt.Errorf("sqs.serverSecret is required")
+	}
 	return nil
 }
 

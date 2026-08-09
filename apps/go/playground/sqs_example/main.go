@@ -34,8 +34,8 @@ func main() {
 	//    The nodeAddress, accountID, and region are used to build queue URLs and ARNs.
 	//    The serverSecret is used to sign receipt handles (use a strong secret in production).
 	//    The storeFactory determines which Store implementation is used (memory, sqlite, etc.).
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg)
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
 
 	manager := queue.NewQueueManager(
@@ -116,7 +116,7 @@ func main() {
 	}
 
 	// 7. Purge the queue (removes all messages).
-	err = manager.PurgeQueue("orders")
+	err = manager.PurgeQueue(context.Background(), "orders")
 	if err != nil {
 		log.Fatalf("failed to purge queue: %v", err)
 	}

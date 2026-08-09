@@ -3,13 +3,17 @@ package queue
 import (
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
 // QueueAttributes holds all SQS queue attributes with defaults and validation.
+// All field access should go through GetAttribute/SetAttribute which are
+// protected by a mutex for concurrent safety.
 type QueueAttributes struct {
+	mu                            sync.RWMutex
 	VisibilityTimeout             int    `yaml:"visibilityTimeout"`
 	DelaySeconds                  int    `yaml:"delaySeconds"`
 	MaximumMessageSize            int    `yaml:"maximumMessageSize"`
@@ -41,6 +45,9 @@ func NewDefaultQueueAttributes() *QueueAttributes {
 
 // GetAttribute returns the value of a named attribute as a string.
 func (a *QueueAttributes) GetAttribute(name string) (string, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	switch name {
 	case types.AttributeVisibilityTimeout:
 		return strconv.Itoa(a.VisibilityTimeout), true
@@ -78,12 +85,19 @@ func (a *QueueAttributes) GetAttribute(name string) (string, bool) {
 }
 
 // SetAttribute sets the value of a named attribute from a string.
+// Validates numeric ranges per SQS limits.
 func (a *QueueAttributes) SetAttribute(name, value string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	switch name {
 	case types.AttributeVisibilityTimeout:
 		v, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("invalid VisibilityTimeout: %s", value)
+		}
+		if v < types.MinVisibilityTimeout || v > types.MaxVisibilityTimeout {
+			return fmt.Errorf("VisibilityTimeout must be between %d and %d", types.MinVisibilityTimeout, types.MaxVisibilityTimeout)
 		}
 		a.VisibilityTimeout = v
 	case types.AttributeDelaySeconds:
@@ -91,11 +105,17 @@ func (a *QueueAttributes) SetAttribute(name, value string) error {
 		if err != nil {
 			return fmt.Errorf("invalid DelaySeconds: %s", value)
 		}
+		if v < types.MinDelaySeconds || v > types.MaxDelaySeconds {
+			return fmt.Errorf("DelaySeconds must be between %d and %d", types.MinDelaySeconds, types.MaxDelaySeconds)
+		}
 		a.DelaySeconds = v
 	case types.AttributeMaximumMessageSize:
 		v, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("invalid MaximumMessageSize: %s", value)
+		}
+		if v < types.MinMaximumMessageSize || v > types.MaxMaximumMessageSize {
+			return fmt.Errorf("MaximumMessageSize must be between %d and %d", types.MinMaximumMessageSize, types.MaxMaximumMessageSize)
 		}
 		a.MaximumMessageSize = v
 	case types.AttributeMessageRetentionPeriod:
@@ -103,11 +123,17 @@ func (a *QueueAttributes) SetAttribute(name, value string) error {
 		if err != nil {
 			return fmt.Errorf("invalid MessageRetentionPeriod: %s", value)
 		}
+		if v < types.MinMessageRetentionPeriod || v > types.MaxMessageRetentionPeriod {
+			return fmt.Errorf("MessageRetentionPeriod must be between %d and %d", types.MinMessageRetentionPeriod, types.MaxMessageRetentionPeriod)
+		}
 		a.MessageRetentionPeriod = v
 	case types.AttributeReceiveMessageWaitTimeSeconds:
 		v, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("invalid ReceiveMessageWaitTimeSeconds: %s", value)
+		}
+		if v < types.MinReceiveMessageWaitTime || v > types.MaxReceiveMessageWaitTime {
+			return fmt.Errorf("ReceiveMessageWaitTimeSeconds must be between %d and %d", types.MinReceiveMessageWaitTime, types.MaxReceiveMessageWaitTime)
 		}
 		a.ReceiveMessageWaitTimeSeconds = v
 	case types.AttributeQueueArn:
@@ -145,6 +171,9 @@ func (a *QueueAttributes) SetAttribute(name, value string) error {
 		v, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("invalid KmsDataKeyReusePeriodSeconds: %s", value)
+		}
+		if v < types.MinKmsDataKeyReusePeriodSeconds || v > types.MaxKmsDataKeyReusePeriodSeconds {
+			return fmt.Errorf("KmsDataKeyReusePeriodSeconds must be between %d and %d", types.MinKmsDataKeyReusePeriodSeconds, types.MaxKmsDataKeyReusePeriodSeconds)
 		}
 		a.KmsDataKeyReusePeriodSeconds = v
 	case types.AttributeDeduplicationScope:
@@ -197,10 +226,14 @@ func AllAttributeNames() []string {
 
 // GetQueueArn returns the queue ARN.
 func (a *QueueAttributes) GetQueueArn() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.QueueArn
 }
 
 // GetRedrivePolicy returns the redrive policy JSON string.
 func (a *QueueAttributes) GetRedrivePolicy() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.RedrivePolicy
 }

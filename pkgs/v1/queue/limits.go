@@ -18,19 +18,24 @@ const (
 
 // Limits enforces SQS message and queue limits.
 type Limits struct {
-	Mode LimitsMode
+	mode LimitsMode
 }
 
 // NewLimits creates a new Limits instance with the given mode.
 func NewLimits(mode LimitsMode) *Limits {
-	return &Limits{Mode: mode}
+	return &Limits{mode: mode}
 }
 
 // VerifyMessageSize checks if a message body is within the allowed size.
+// In RelaxedMode, the size limit is doubled for local development.
 func (l *Limits) VerifyMessageSize(body string, maxMessageSize int) error {
-	if len(body) > maxMessageSize {
+	effectiveMax := maxMessageSize
+	if l.mode == RelaxedMode {
+		effectiveMax *= 2
+	}
+	if len(body) > effectiveMax {
 		return NewInvalidParameterValue(
-			fmt.Sprintf("Message too long: %d bytes exceeds maximum %d bytes", len(body), maxMessageSize),
+			fmt.Sprintf("Message too long: %d bytes exceeds maximum %d bytes", len(body), effectiveMax),
 		)
 	}
 	return nil
@@ -88,9 +93,9 @@ func (l *Limits) VerifyMaxNumberOfMessages(maxMessages int) error {
 
 // VerifyMessageRetentionPeriod checks if retention period is within allowed range.
 func (l *Limits) VerifyMessageRetentionPeriod(retention int) error {
-	if retention < 60 || retention > types.MaxMessageRetentionPeriod {
+	if retention < types.MinMessageRetentionPeriod || retention > types.MaxMessageRetentionPeriod {
 		return NewInvalidParameterValue(
-			fmt.Sprintf("MessageRetentionPeriod must be between 60 and %d, got %d", types.MaxMessageRetentionPeriod, retention),
+			fmt.Sprintf("MessageRetentionPeriod must be between %d and %d, got %d", types.MinMessageRetentionPeriod, types.MaxMessageRetentionPeriod, retention),
 		)
 	}
 	return nil
@@ -98,9 +103,9 @@ func (l *Limits) VerifyMessageRetentionPeriod(retention int) error {
 
 // VerifyMaximumMessageSize checks if max message size is within allowed range.
 func (l *Limits) VerifyMaximumMessageSize(size int) error {
-	if size < 1024 || size > types.MaxMaximumMessageSize {
+	if size < types.MinMaximumMessageSize || size > types.MaxMaximumMessageSize {
 		return NewInvalidParameterValue(
-			fmt.Sprintf("MaximumMessageSize must be between 1024 and %d, got %d", types.MaxMaximumMessageSize, size),
+			fmt.Sprintf("MaximumMessageSize must be between %d and %d, got %d", types.MinMaximumMessageSize, types.MaxMaximumMessageSize, size),
 		)
 	}
 	return nil
@@ -111,11 +116,11 @@ func (l *Limits) VerifyQueueName(name string) error {
 	if len(name) == 0 {
 		return NewInvalidParameterValue("QueueName must not be empty")
 	}
-	if len(name) > 80 {
-		return NewInvalidParameterValue(fmt.Sprintf("QueueName too long: %d characters, maximum is 80", len(name)))
+	if len(name) > types.MaxQueueNameLength {
+		return NewInvalidParameterValue(fmt.Sprintf("QueueName too long: %d characters, maximum is %d", len(name), types.MaxQueueNameLength))
 	}
 	// FIFO queues must end with .fifo
-	if len(name) > 5 && name[len(name)-5:] == ".fifo" {
+	if len(name) >= 5 && name[len(name)-5:] == ".fifo" {
 		// Validate the base name (before .fifo) uses valid characters
 		base := name[:len(name)-5]
 		for _, c := range base {
@@ -136,9 +141,9 @@ func (l *Limits) VerifyQueueName(name string) error {
 
 // VerifyDeduplicationId checks if a deduplication ID is within the allowed size.
 func (l *Limits) VerifyDeduplicationId(id string) error {
-	if len(id) > 128 {
+	if len(id) > types.MaxDeduplicationIdLength {
 		return NewInvalidParameterValue(
-			fmt.Sprintf("MessageDeduplicationId too long: %d characters, maximum is 128", len(id)),
+			fmt.Sprintf("MessageDeduplicationId too long: %d characters, maximum is %d", len(id), types.MaxDeduplicationIdLength),
 		)
 	}
 	return nil
@@ -146,9 +151,9 @@ func (l *Limits) VerifyDeduplicationId(id string) error {
 
 // VerifyMessageGroupId checks if a message group ID is within the allowed size.
 func (l *Limits) VerifyMessageGroupId(id string) error {
-	if len(id) > 128 {
+	if len(id) > types.MaxMessageGroupIdLength {
 		return NewInvalidParameterValue(
-			fmt.Sprintf("MessageGroupId too long: %d characters, maximum is 128", len(id)),
+			fmt.Sprintf("MessageGroupId too long: %d characters, maximum is %d", len(id), types.MaxMessageGroupIdLength),
 		)
 	}
 	return nil

@@ -370,6 +370,7 @@ func (s *BadgerStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 }
 
 // DeleteMessage removes a message by receipt handle.
+// Uses a single Update transaction to avoid TOCTOU race between find and delete.
 func (s *BadgerStore) DeleteMessage(ctx context.Context, receiptHandle string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -379,9 +380,8 @@ func (s *BadgerStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 	}
 
 	found := false
-	var keyToDelete []byte
 
-	err := s.db.View(func(txn *badger.Txn) error {
+	err := s.db.Update(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = s.keyPrefix
 		it := txn.NewIterator(opts)
@@ -399,24 +399,21 @@ func (s *BadgerStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 
 			if sm.ReceiptHandle == receiptHandle {
 				found = true
-				keyToDelete = append([]byte{}, item.Key()...)
-				return nil
+				return txn.Delete(item.KeyCopy(nil))
 			}
 		}
 		return nil
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to find message for deletion: %w", err)
+		return fmt.Errorf("failed to delete message: %w", err)
 	}
 
 	if !found {
 		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
 	}
 
-	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Delete(keyToDelete)
-	})
+	return nil
 }
 
 // ChangeMessageVisibility updates the visibility timeout of a message.
@@ -586,6 +583,7 @@ func (s *BadgerStore) ApproximateNumberOfMessagesDelayed() int {
 }
 
 // Purge removes all messages from the store.
+// Uses a single Update transaction to avoid non-atomic read-then-delete.
 func (s *BadgerStore) Purge(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -594,25 +592,14 @@ func (s *BadgerStore) Purge(ctx context.Context) error {
 		return fmt.Errorf("store is closed")
 	}
 
-	var keysToDelete [][]byte
-	err := s.db.View(func(txn *badger.Txn) error {
+	err := s.db.Update(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = s.keyPrefix
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
 		for it.Seek(s.keyPrefix); it.ValidForPrefix(s.keyPrefix); it.Next() {
-			keysToDelete = append(keysToDelete, append([]byte{}, it.Item().Key()...))
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list messages for purge: %w", err)
-	}
-
-	err = s.db.Update(func(txn *badger.Txn) error {
-		for _, key := range keysToDelete {
-			if err := txn.Delete(key); err != nil {
+			if err := txn.Delete(it.Item().KeyCopy(nil)); err != nil {
 				return err
 			}
 		}
@@ -679,7 +666,10 @@ func (s *BadgerStore) generateReceiptHandle(messageID string, now time.Time) str
 // generateNonce creates a random hex string.
 func generateNonce() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based nonce if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -753,8 +743,8 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 		return
 	}
 
-	// Redrive messages and delete from this queue
-	s.db.Update(func(txn *badger.Txn) error {
+	// Redrive messages and delete from this queue in a single transaction
+	err = s.db.Update(func(txn *badger.Txn) error {
 		for _, rc := range toRedrive {
 			rc.msg.ReceiptHandle = ""
 			rc.msg.IsVisible = true
@@ -764,4 +754,5 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 		}
 		return nil
 	})
+	_ = err // redrive errors are non-fatal; messages will be retried on next ReceiveMessages
 }

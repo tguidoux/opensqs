@@ -19,9 +19,5 @@ spec:
       port: {{ .Values.service.metricsPort }}
       targetPort: metrics
       protocol: TCP
-    - name: health
-      port: {{ .Values.service.healthPort }}
-      targetPort: health
-      protocol: TCP
   selector:
     {{- include "opensqs.selectorLabels" . | nindent 4 }}

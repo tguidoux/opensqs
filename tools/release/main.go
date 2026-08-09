@@ -269,10 +269,13 @@ func main() {
 	ok("On branch: %s", currentBranch)
 
 	// ─── Determine Version ──────────────────────────────────────────────────
+	// Capture the previous tag BEFORE creating the new one, so release notes
+	// cover the correct commit range.
+	previousTag := getLatestTag()
+
 	if f.version == "" {
-		latestTag := getLatestTag()
-		f.version = bumpPatchVersion(latestTag)
-		info("No version specified. Auto-incrementing: %s → %s", latestTag, f.version)
+		f.version = bumpPatchVersion(previousTag)
+		info("No version specified. Auto-incrementing: %s → %s", previousTag, f.version)
 	} else {
 		info("Using specified version: %s", f.version)
 	}
@@ -384,8 +387,8 @@ func main() {
 		if f.dryRun {
 			info("[dry-run] Would create GitHub Release: %s", f.version)
 		} else {
-			// Generate release notes from commits since last tag
-			previousTag := getLatestTag()
+			// Generate release notes from commits since the previous tag.
+			// previousTag was captured before the new tag was created.
 			var releaseNotes string
 			if previousTag == "v0.0.0" {
 				releaseNotes, _ = runCommand("git", "log", "--pretty=format:- %s", "HEAD")

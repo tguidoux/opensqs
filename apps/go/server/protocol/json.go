@@ -442,6 +442,3 @@ type JSONBatchEntry struct {
 	MessageGroupID          string
 	MessageSystemAttributes map[string]types.MessageSystemAttribute
 }
-
-// Ensure types import is used
-var _ = types.SQSVersion

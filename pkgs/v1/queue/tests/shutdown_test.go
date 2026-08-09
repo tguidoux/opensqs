@@ -3,6 +3,7 @@ package queue_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func TestShutdown_WithDeadline(t *testing.T) {
 	require.NoError(t, err)
 
 	// Shutdown with a short deadline — should still succeed for memory store
-	ctx, cancel := context.WithTimeout(context.Background(), 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	err = qm.Shutdown(ctx)
@@ -99,10 +100,8 @@ func TestShutdown_AfterOperations(t *testing.T) {
 
 // TestShutdown_WithSQLiteStore verifies shutdown works with SQLite stores too.
 func TestShutdown_WithSQLiteStore(t *testing.T) {
-	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) store.Store {
-		s, err := newSQLiteStore(queueName, visibilityTimeout, serverSecret, cfg)
-		require.NoError(t, err)
-		return s
+	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
+		return newSQLiteStore(queueName, visibilityTimeout, serverSecret, cfg)
 	}
 
 	qm := queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)

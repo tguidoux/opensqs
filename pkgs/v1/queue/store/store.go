@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -38,17 +39,11 @@ type Store interface {
 	Close() error
 }
 
-// MessageCounts holds the approximate counts for a queue.
-type MessageCounts struct {
-	Available int
-	InFlight  int
-	Delayed   int
-}
-
 // StoreFactory creates a new Store instance for a queue.
 // It receives the queue name, visibility timeout, server secret, and queue attributes
 // so the factory can configure FIFO, DLQ, or other store-level behavior.
-type StoreFactory func(queueName string, visibilityTimeout int, serverSecret []byte, attrs StoreConfig) Store
+// Returns an error if the store cannot be created (e.g. database connection failure).
+type StoreFactory func(queueName string, visibilityTimeout int, serverSecret []byte, attrs StoreConfig) (Store, error)
 
 // StoreConfig holds store-level configuration derived from queue attributes.
 type StoreConfig struct {
@@ -62,5 +57,27 @@ type StoreConfig struct {
 // The store invokes this callback instead of making the message visible again.
 type RedriveFunc func(msg *types.Message)
 
+// nowFunc holds the current time provider, used for testability.
+// Uses atomic operations for thread-safe swapping in tests.
+var nowFunc atomic.Pointer[func() time.Time]
+
+func init() {
+	defaultNow := func() time.Time { return time.Now().UTC() }
+	nowFunc.Store(&defaultNow)
+}
+
 // Now returns the current time, used for testability.
-var Now = func() time.Time { return time.Now().UTC() }
+// Thread-safe via atomic pointer; safe for use with t.Parallel().
+func Now() time.Time {
+	f := nowFunc.Load()
+	if f == nil {
+		return time.Now().UTC()
+	}
+	return (*f)()
+}
+
+// SetNowFunc replaces the time provider. Intended for testing only.
+// Thread-safe via atomic pointer swap.
+func SetNowFunc(f func() time.Time) {
+	nowFunc.Store(&f)
+}

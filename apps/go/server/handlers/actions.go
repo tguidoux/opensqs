@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -224,6 +225,33 @@ func (h *Handler) handleReceiveMessage(ctx context.Context, req Request) (*Respo
 		return nil, queue.NewInternalError(err.Error())
 	}
 
+	// Filter returned attributes based on requested AttributeNames and MessageAttributeNames
+	// If "All" is requested (or the list is empty), return everything
+	attrNames := req.GetAttributeNames()
+	msgAttrNames := req.GetMessageAttributeNames()
+	requestAllAttrs := len(attrNames) == 0
+	requestAllMsgAttrs := len(msgAttrNames) == 0
+	for _, m := range msgs {
+		if !requestAllAttrs && !containsString(attrNames, "All") {
+			filtered := make(map[string]string)
+			for _, name := range attrNames {
+				if v, ok := m.Attributes[name]; ok {
+					filtered[name] = v
+				}
+			}
+			m.Attributes = filtered
+		}
+		if !requestAllMsgAttrs && !containsString(msgAttrNames, "All") {
+			filtered := make(map[string]types.MessageAttribute)
+			for _, name := range msgAttrNames {
+				if v, ok := m.MessageAttributes[name]; ok {
+					filtered[name] = v
+				}
+			}
+			m.MessageAttributes = filtered
+		}
+	}
+
 	if h.metrics != nil && len(msgs) > 0 {
 		h.metrics.IncMessagesReceived(q.Name(), len(msgs))
 	}
@@ -328,16 +356,28 @@ func (h *Handler) handleSetQueueAttributes(ctx context.Context, req Request) (*R
 	}
 
 	attrs := req.GetAttributes()
+	// Immutable attributes that cannot be changed after queue creation
+	immutableAttrs := []string{
+		types.AttributeFifoQueue,
+		types.AttributeContentBasedDeduplication,
+		types.AttributeDeduplicationScope,
+		types.AttributeFifoThroughputLimit,
+	}
 	for name, value := range attrs {
-		// FifoQueue attribute is immutable after creation
-		if name == types.AttributeFifoQueue {
-			currentFifo, _ := q.GetAttribute(types.AttributeFifoQueue)
-			if currentFifo != value {
-				return nil, queue.NewInvalidAttributeValue(
-					"The FIFO queue attribute cannot be changed after the queue has been created.",
-				)
+		// Check immutable attributes
+		for _, imm := range immutableAttrs {
+			if name == imm {
+				current, _ := q.GetAttribute(imm)
+				if current != value {
+					return nil, queue.NewInvalidAttributeValue(
+						fmt.Sprintf("The %s queue attribute cannot be changed after the queue has been created.", imm),
+					)
+				}
+				continue
 			}
-			continue
+		}
+		if name == types.AttributeFifoQueue {
+			continue // Already validated above
 		}
 		if err := q.Attributes().SetAttribute(name, value); err != nil {
 			return nil, queue.NewInvalidAttributeName(err.Error())
@@ -357,7 +397,7 @@ func (h *Handler) handlePurgeQueue(ctx context.Context, req Request) (*Response,
 		return nil, err
 	}
 
-	if err := q.Store().Purge(ctx); err != nil {
+	if err := h.manager.PurgeQueue(ctx, q.Name()); err != nil {
 		return nil, queue.NewInternalError(err.Error())
 	}
 
@@ -402,11 +442,11 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 	isFifo := q.Attributes().FifoQueue
 
 	var results []BatchResult
-	var errors []BatchError
+	var batchErrors []BatchError
 
 	for _, entry := range entries {
 		if entry.MessageBody == "" {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "MissingParameter",
 				Message:     "MessageBody is required.",
@@ -416,7 +456,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 		}
 
 		if err := h.limits.VerifyMessageSize(entry.MessageBody, maxSize); err != nil {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "InvalidParameterValue",
 				Message:     err.Error(),
@@ -426,7 +466,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 		}
 
 		if err := h.limits.VerifyDelaySeconds(entry.DelaySeconds); err != nil {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "InvalidParameterValue",
 				Message:     err.Error(),
@@ -438,7 +478,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 		// FIFO validation for batch entries
 		if isFifo {
 			if entry.MessageGroupID == "" {
-				errors = append(errors, BatchError{
+				batchErrors = append(batchErrors, BatchError{
 					ID:          entry.ID,
 					Code:        "MissingParameter",
 					Message:     "MessageGroupId is required for FIFO queues.",
@@ -447,7 +487,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 				continue
 			}
 			if err := h.limits.VerifyMessageGroupId(entry.MessageGroupID); err != nil {
-				errors = append(errors, BatchError{
+				batchErrors = append(batchErrors, BatchError{
 					ID:          entry.ID,
 					Code:        "InvalidParameterValue",
 					Message:     err.Error(),
@@ -456,7 +496,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 				continue
 			}
 			if entry.MessageDeduplicationID == "" && !q.Attributes().ContentBasedDeduplication {
-				errors = append(errors, BatchError{
+				batchErrors = append(batchErrors, BatchError{
 					ID:          entry.ID,
 					Code:        "InvalidParameterValue",
 					Message:     "The queue should either have ContentBasedDeduplication enabled or MessageDeduplicationId provided explicitly",
@@ -466,7 +506,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 			}
 			if entry.MessageDeduplicationID != "" {
 				if err := h.limits.VerifyDeduplicationId(entry.MessageDeduplicationID); err != nil {
-					errors = append(errors, BatchError{
+					batchErrors = append(batchErrors, BatchError{
 						ID:          entry.ID,
 						Code:        "InvalidParameterValue",
 						Message:     err.Error(),
@@ -509,7 +549,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 		}
 
 		if err := q.Store().SendMessage(ctx, msg, entry.DelaySeconds); err != nil {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "InternalError",
 				Message:     err.Error(),
@@ -531,7 +571,7 @@ func (h *Handler) handleSendMessageBatch(ctx context.Context, req Request) (*Res
 	return &Response{
 		Action:       types.ActionSendMessageBatch,
 		BatchResults: results,
-		BatchErrors:  errors,
+		BatchErrors:  batchErrors,
 		RequestID:    newRequestID(),
 	}, nil
 }
@@ -564,11 +604,11 @@ func (h *Handler) handleDeleteMessageBatch(ctx context.Context, req Request) (*R
 	}
 
 	var results []BatchResult
-	var errors []BatchError
+	var batchErrors []BatchError
 
 	for _, entry := range entries {
 		if entry.ReceiptHandle == "" {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "MissingParameter",
 				Message:     "ReceiptHandle is required.",
@@ -578,7 +618,7 @@ func (h *Handler) handleDeleteMessageBatch(ctx context.Context, req Request) (*R
 		}
 
 		if err := q.Store().DeleteMessage(ctx, entry.ReceiptHandle); err != nil {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "ReceiptHandleIsInvalid",
 				Message:     err.Error(),
@@ -593,7 +633,7 @@ func (h *Handler) handleDeleteMessageBatch(ctx context.Context, req Request) (*R
 	return &Response{
 		Action:       types.ActionDeleteMessageBatch,
 		BatchResults: results,
-		BatchErrors:  errors,
+		BatchErrors:  batchErrors,
 		RequestID:    newRequestID(),
 	}, nil
 }
@@ -626,11 +666,11 @@ func (h *Handler) handleChangeMessageVisibilityBatch(ctx context.Context, req Re
 	}
 
 	var results []BatchResult
-	var errors []BatchError
+	var batchErrors []BatchError
 
 	for _, entry := range entries {
 		if entry.ReceiptHandle == "" {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "MissingParameter",
 				Message:     "ReceiptHandle is required.",
@@ -644,7 +684,7 @@ func (h *Handler) handleChangeMessageVisibilityBatch(ctx context.Context, req Re
 			visibilityTimeout = q.Attributes().VisibilityTimeout
 		}
 		if err := h.limits.VerifyVisibilityTimeout(visibilityTimeout); err != nil {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "InvalidParameterValue",
 				Message:     err.Error(),
@@ -654,7 +694,7 @@ func (h *Handler) handleChangeMessageVisibilityBatch(ctx context.Context, req Re
 		}
 
 		if err := q.Store().ChangeMessageVisibility(ctx, entry.ReceiptHandle, visibilityTimeout); err != nil {
-			errors = append(errors, BatchError{
+			batchErrors = append(batchErrors, BatchError{
 				ID:          entry.ID,
 				Code:        "ReceiptHandleIsInvalid",
 				Message:     err.Error(),
@@ -669,7 +709,7 @@ func (h *Handler) handleChangeMessageVisibilityBatch(ctx context.Context, req Re
 	return &Response{
 		Action:       types.ActionChangeMessageVisibilityBatch,
 		BatchResults: results,
-		BatchErrors:  errors,
+		BatchErrors:  batchErrors,
 		RequestID:    newRequestID(),
 	}, nil
 }
@@ -686,9 +726,24 @@ func (h *Handler) handleTagQueue(ctx context.Context, req Request) (*Response, e
 	}
 
 	tags := req.GetTags()
-	for key, value := range tags {
-		q.Tags()[key] = value
+
+	// AWS limit: maximum 50 tags per queue
+	currentTags := q.Tags()
+	if len(currentTags)+len(tags) > 50 {
+		return nil, queue.NewInvalidParameterValue("Maximum number of tags per queue is 50")
 	}
+
+	for key, value := range tags {
+		// AWS limits: tag key max 128 chars, value max 256 chars
+		if len(key) > 128 {
+			return nil, queue.NewInvalidParameterValue(fmt.Sprintf("Tag key too long (max 128): %s", key))
+		}
+		if len(value) > 256 {
+			return nil, queue.NewInvalidParameterValue(fmt.Sprintf("Tag value too long (max 256): %s", key))
+		}
+		currentTags[key] = value
+	}
+	q.SetTags(currentTags)
 
 	return &Response{
 		Action:    types.ActionTagQueue,
@@ -704,9 +759,11 @@ func (h *Handler) handleUntagQueue(ctx context.Context, req Request) (*Response,
 	}
 
 	tagKeys := req.GetTagKeys()
+	currentTags := q.Tags()
 	for _, key := range tagKeys {
-		delete(q.Tags(), key)
+		delete(currentTags, key)
 	}
+	q.SetTags(currentTags)
 
 	return &Response{
 		Action:    types.ActionUntagQueue,
@@ -819,15 +876,29 @@ func computeMD5OfMessageSystemAttributes(attrs map[string]types.MessageSystemAtt
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// generateMessageID generates a unique message ID.
-// In production, this should use a UUID library.
+// generateMessageID generates a unique message ID using crypto/rand.
 func generateMessageID() string {
-	return fmt.Sprintf("%x", time.Now().UnixNano())
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	// Format as UUID v4 style
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// newRequestID generates a request ID.
+// newRequestID generates a unique request ID.
 func newRequestID() string {
-	return types.EmptyRequestID
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return types.EmptyRequestID
+	}
+	// Format as UUID v4
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // containsString checks if a slice contains a string.
@@ -860,7 +931,7 @@ func allAttributeNames() []string {
 
 // isFifoQueueName returns true if the queue name ends with ".fifo".
 func isFifoQueueName(name string) bool {
-	return len(name) > 5 && name[len(name)-5:] == ".fifo"
+	return len(name) >= 5 && name[len(name)-5:] == ".fifo"
 }
 
 // handleListDeadLetterSourceQueues handles the ListDeadLetterSourceQueues action.
@@ -961,7 +1032,7 @@ func (h *Handler) handleListMessageMoveTasks(ctx context.Context, req Request) (
 			DestinationArn:               t.DestinationArn,
 			Status:                       string(t.Status),
 			MaxNumberOfMessagesPerSecond: t.MaxNumberOfMessagesPerSecond,
-			MovedMessages:                t.MovedMessages,
+			MovedMessages:                t.MovedMessages(),
 		})
 	}
 

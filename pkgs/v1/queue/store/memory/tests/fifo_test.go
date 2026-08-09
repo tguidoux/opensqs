@@ -198,10 +198,9 @@ func TestFIFO_ContentBasedDeduplication(t *testing.T) {
 }
 
 func TestFIFO_DedupExpiry(t *testing.T) {
-	originalNow := store.Now
 	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	store.Now = func() time.Time { return baseTime }
-	defer func() { store.Now = originalNow }()
+	store.SetNowFunc(func() time.Time { return baseTime })
+	defer store.SetNowFunc(func() time.Time { return time.Now().UTC() })
 
 	s := newFifoStore(t)
 	defer s.Close()

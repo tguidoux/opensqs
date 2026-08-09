@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "opensqs.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "opensqs.labels" . | nindent 4 }}
 data:
@@ -9,6 +10,12 @@ data:
     server:
       host: {{ .Values.opensqs.host | quote }}
       port: {{ .Values.opensqs.port }}
+      {{- if .Values.opensqs.tls.enabled }}
+      tls:
+        enabled: true
+        certFile: {{ .Values.opensqs.tls.certFile | quote }}
+        keyFile: {{ .Values.opensqs.tls.keyFile | quote }}
+      {{- end }}
     sqs:
       nodeAddress: {{ .Values.opensqs.sqs.nodeAddress | quote }}
       accountId: {{ .Values.opensqs.sqs.accountId | quote }}
@@ -40,13 +47,6 @@ data:
       requestsPerSecond: {{ .Values.opensqs.rateLimit.requestsPerSecond }}
       burst: {{ .Values.opensqs.rateLimit.burst }}
       perQueue: {{ .Values.opensqs.rateLimit.perQueue }}
-    {{- if .Values.opensqs.tls.enabled }}
-    server:
-      tls:
-        enabled: true
-        certFile: {{ .Values.opensqs.tls.certFile | quote }}
-        keyFile: {{ .Values.opensqs.tls.keyFile | quote }}
-    {{- end }}
     queues:
       autoCreate: {{ .Values.opensqs.queues.autoCreate }}
       {{- if .Values.opensqs.queues.startup }}
