@@ -1,0 +1,28 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_library", "opensqs_go_test")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = ["test_helper.go"],
+    importpath = "github.com/tguidoux/opensqs/apps/go/server/integration",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/go/server/handlers:go_default_library",
+        "//apps/go/server/middleware:go_default_library",
+        "//apps/go/server/protocol:go_default_library",
+        "//pkgs/v1/logger:go_default_library",
+        "//pkgs/v1/queue:go_default_library",
+        "//pkgs/v1/queue/store:go_default_library",
+        "//pkgs/v1/queue/store/memory:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
+    ],
+)
+
+opensqs_go_test(
+    name = "go_default_test",
+    srcs = ["integration_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "@com_github_stretchr_testify//assert:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
+    ],
+)
