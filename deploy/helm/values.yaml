@@ -1,0 +1,241 @@
+# OpenSQS Helm Chart Values
+# This file contains default configuration values for the OpenSQS Helm chart.
+
+# -- Number of replicas (note: only meaningful with shared storage like SQLite on PVC or BadgerDB on PVC)
+replicaCount: 1
+
+image:
+  # -- Image repository
+  repository: registry.opensqs.io/opensqs-server
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Image tag (defaults to chart appVersion)
+  tag: ""
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+
+# -- Override the full name
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a service account
+  create: true
+  # -- Annotations for the service account
+  annotations: {}
+  # -- Name of the service account (generated if not set)
+  name: ""
+
+# -- Pod annotations
+podAnnotations: {}
+
+# -- Pod security context
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+
+# -- Container security context
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- SQS API port
+  port: 9324
+  # -- UI port
+  uiPort: 9325
+  # -- Metrics port
+  metricsPort: 9326
+  # -- Health check port
+  healthPort: 8001
+
+# OpenSQS server configuration
+opensqs:
+  # -- Server host
+  host: "0.0.0.0"
+  # -- Server port
+  port: 9324
+
+  # SQS configuration
+  sqs:
+    # -- External node address (set to the service DNS or ingress host)
+    nodeAddress: ""
+    # -- AWS account ID used in queue URLs
+    accountId: "000000000000"
+    # -- AWS region
+    region: "us-east-1"
+    # -- Storage type: "memory", "sqlite", or "badger"
+    storageType: "memory"
+    # -- SQLite database path (used when storageType is "sqlite")
+    sqlitePath: "/data/opensqs.db"
+    # -- BadgerDB directory path (used when storageType is "badger")
+    badgerPath: "/data/badger"
+    # -- Enforce SQS limits strictly
+    strictLimits: true
+    # -- Server secret for signing receipt handles (use a secret reference in production)
+    serverSecret: "change-me-in-production"
+
+  # -- Log level: "debug", "info", "warn", "error"
+  logLevel: "info"
+
+  # Health check server
+  health:
+    enabled: true
+    port: 8001
+
+  # Web UI server
+  ui:
+    enabled: true
+    port: 9325
+
+  # Prometheus metrics server
+  metrics:
+    enabled: true
+    port: 9326
+
+  # -- Environment: "local", "staging", "prod", "aoostar"
+  environment: "prod"
+
+  # Request logging middleware
+  requestLogging:
+    # -- Enable structured HTTP request logging
+    enabled: false
+
+  # Rate limiting middleware
+  rateLimit:
+    # -- Enable rate limiting
+    enabled: false
+    # -- Requests per second
+    requestsPerSecond: 1000
+    # -- Burst capacity
+    burst: 100
+    # -- Per-queue rate limiting (vs global)
+    perQueue: false
+
+  # TLS configuration
+  tls:
+    # -- Enable TLS for the SQS API server
+    enabled: false
+    # -- TLS certificate file path
+    certFile: ""
+    # -- TLS private key file path
+    keyFile: ""
+
+  # Startup queues to create on boot
+  queues:
+    autoCreate: true
+    startup: []
+    # - name: "my-queue"
+    #   attributes:
+    #     VisibilityTimeout: "30"
+    #     MessageRetentionPeriod: "345600"
+    # - name: "my-fifo-queue.fifo"
+    #   attributes:
+    #     FifoQueue: "true"
+    #     ContentBasedDeduplication: "true"
+
+# -- Existing secret containing the server secret
+# If set, opensqs.sqs.serverSecret will be ignored and the secret's key "serverSecret" will be used
+existingSecret: ""
+
+# Persistence configuration
+persistence:
+  # -- Enable persistent storage (required for sqlite/badger storage types)
+  enabled: false
+  # -- Storage class name (uses cluster default if not set)
+  storageClass: ""
+  # -- Access modes
+  accessModes:
+    - ReadWriteOnce
+  # -- Storage size
+  size: 10Gi
+  # -- Mount path
+  mountPath: /data
+
+# Ingress configuration
+ingress:
+  # -- Enable ingress for the SQS API
+  enabled: false
+  # -- Ingress class name
+  className: ""
+  # -- Annotations for the ingress
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  # -- Hosts configuration
+  hosts:
+    - host: opensqs.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration for ingress
+  tls: []
+  #  - secretName: opensqs-tls
+  #    hosts:
+  #      - opensqs.local
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations
+tolerations: []
+
+# -- Affinity rules
+affinity: {}
+
+# -- Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# -- Readiness probe
+readinessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# -- Liveness probe
+livenessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+# -- Autoscaling (requires metrics server)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# -- Extra environment variables
+extraEnv: []
+
+# -- Extra volumes
+extraVolumes: []
+
+# -- Extra volume mounts
+extraVolumeMounts: []

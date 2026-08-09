@@ -1,0 +1,124 @@
+# Production values for OpenSQS Helm Chart
+# This file overrides defaults in values.yaml for production deployments.
+
+replicaCount: 1  # Single replica unless using shared storage
+
+image:
+  pullPolicy: IfNotPresent
+  tag: ""  # Set to a specific version in production
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+
+opensqs:
+  host: "0.0.0.0"
+  port: 9324
+
+  sqs:
+    nodeAddress: ""  # Set to the external endpoint
+    accountId: "000000000000"
+    region: "us-east-1"
+    storageType: "badger"  # Use persistent storage in production
+    badgerPath: "/data/badger"
+    strictLimits: true
+    serverSecret: ""  # Set via existingSecret in production
+
+  logLevel: "info"
+
+  health:
+    enabled: true
+    port: 8001
+
+  ui:
+    enabled: true
+    port: 9325
+
+  metrics:
+    enabled: true
+    port: 9326
+
+  environment: "prod"
+
+  requestLogging:
+    enabled: true
+
+  rateLimit:
+    enabled: true
+    requestsPerSecond: 1000
+    burst: 100
+    perQueue: true
+
+  tls:
+    enabled: false  # Typically handled by ingress in production
+
+  queues:
+    autoCreate: false
+    startup: []
+
+# Use an existing secret for the server secret
+existingSecret: ""  # Set to the secret name containing "serverSecret" key
+
+persistence:
+  enabled: true
+  storageClass: ""  # Use a fast SSD-backed storage class
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+  mountPath: /data
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: opensqs.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: opensqs-tls
+  #    hosts:
+  #      - opensqs.example.com
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 256Mi
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
