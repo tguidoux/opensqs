@@ -1,0 +1,53 @@
+{{template "layout" .}}
+{{define "content"}}
+<h1>Queues</h1>
+
+{{if .Error}}
+<div class="alert alert-error">{{.Error}}</div>
+{{end}}
+{{if .Success}}
+<div class="alert alert-success">{{.Success}}</div>
+{{end}}
+
+<div class="actions-bar">
+    <a href="/queues/new" class="btn btn-primary">+ Create Queue</a>
+</div>
+
+{{if .Queues}}
+<table class="table" id="queue-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Available</th>
+            <th>In-Flight</th>
+            <th>Delayed</th>
+            <th>URL</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Queues}}
+        <tr data-queue="{{.Name}}">
+            <td data-label="Name"><a href="/queues/{{.Name}}">{{.Name}}</a></td>
+            <td data-label="Type">{{if .IsFifo}}<span class="badge badge-fifo">FIFO</span>{{else}}<span class="badge badge-standard">Standard</span>{{end}}</td>
+            <td data-label="Available" class="num">{{.Available}}</td>
+            <td data-label="In-Flight" class="num">{{.InFlight}}</td>
+            <td data-label="Delayed" class="num">{{.Delayed}}</td>
+            <td data-label="URL" class="url-cell">{{.URL}}</td>
+            <td data-label="Actions" class="action-cell">
+                <form method="POST" action="/queues/{{.Name}}/purge" style="display:inline" onsubmit="return confirm('Purge all messages from {{.Name}}?')">
+                    <button type="submit" class="btn btn-sm btn-warning">Purge</button>
+                </form>
+                <form method="POST" action="/queues/{{.Name}}/delete" style="display:inline" onsubmit="return confirm('Delete queue {{.Name}}? This cannot be undone.')">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="empty-state">No queues found. <a href="/queues/new">Create one</a>.</p>
+{{end}}
+{{end}}

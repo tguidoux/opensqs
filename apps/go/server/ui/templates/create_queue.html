@@ -1,0 +1,76 @@
+{{template "layout" .}}
+{{define "content"}}
+<h1>Create Queue</h1>
+
+<div class="actions-bar">
+    <a href="/" class="btn btn-secondary">← Back to Queues</a>
+</div>
+
+<div class="card">
+    <form method="POST" action="/queues/create" id="create-queue-form">
+        <div class="form-group">
+            <label for="queueName">Queue Name</label>
+            <input type="text" name="queueName" id="queueName" required placeholder="my-queue or my-queue.fifo">
+            <p class="hint">FIFO queue names must end with <code>.fifo</code></p>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="fifoQueue" id="fifoQueue" onchange="toggleFifoHint()">
+                    FIFO Queue
+                </label>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="contentBasedDeduplication">
+                    Content-Based Deduplication
+                </label>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="visibilityTimeout">Visibility Timeout (s)</label>
+                <input type="number" name="visibilityTimeout" id="visibilityTimeout" value="30" min="0" max="43200">
+            </div>
+            <div class="form-group">
+                <label for="delaySeconds">Delay Seconds</label>
+                <input type="number" name="delaySeconds" id="delaySeconds" value="0" min="0" max="900">
+            </div>
+            <div class="form-group">
+                <label for="receiveMessageWaitTimeSeconds">Receive Wait Time (s)</label>
+                <input type="number" name="receiveMessageWaitTimeSeconds" id="receiveMessageWaitTimeSeconds" value="0" min="0" max="20">
+            </div>
+        </div>
+
+        <details class="form-group">
+            <summary>Dead-Letter Queue (optional)</summary>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="dlqArn">DLQ ARN</label>
+                    <input type="text" name="dlqArn" id="dlqArn" placeholder="arn:aws:sqs:us-east-1:123456789012:dead-letter">
+                </div>
+                <div class="form-group">
+                    <label for="maxReceiveCount">Max Receive Count</label>
+                    <input type="number" name="maxReceiveCount" id="maxReceiveCount" value="3" min="1" max="1000">
+                </div>
+            </div>
+        </details>
+
+        <button type="submit" class="btn btn-primary">Create Queue</button>
+    </form>
+</div>
+
+<script>
+function toggleFifoHint() {
+    const nameInput = document.getElementById('queueName');
+    const isFifo = document.getElementById('fifoQueue').checked;
+    if (isFifo && !nameInput.value.endsWith('.fifo')) {
+        nameInput.placeholder = 'my-queue.fifo (must end with .fifo)';
+    } else {
+        nameInput.placeholder = 'my-queue or my-queue.fifo';
+    }
+}
+</script>
+{{end}}

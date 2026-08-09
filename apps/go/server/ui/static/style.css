@@ -1,0 +1,599 @@
+/* ============================================================
+   OpenSQS Web UI — Stylesheet
+   Pill-shaped buttons, fluid light/dark themes, fully responsive
+   ============================================================ */
+
+/* ---- Dark theme (default) ---- */
+:root {
+    --bg: #141422;
+    --bg-card: #1e1e36;
+    --bg-input: #282846;
+    --text: #e8e8f0;
+    --text-muted: #9999b5;
+    --border: #383856;
+    --primary: #4a9eff;
+    --primary-hover: #6bb0ff;
+    --primary-text: #ffffff;
+    --danger: #e05555;
+    --danger-hover: #f06868;
+    --warning: #e8a838;
+    --warning-hover: #f0bc55;
+    --success: #4caf72;
+    --badge-fifo: #9b59b6;
+    --badge-standard: #3498db;
+    --link: #6bb0ff;
+    --link-hover: #8ec5ff;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- Light theme ---- */
+[data-theme="light"] {
+    --bg: #f0f2f5;
+    --bg-card: #ffffff;
+    --bg-input: #f5f6f8;
+    --text: #1a1a2e;
+    --text-muted: #6b6b85;
+    --border: #d8dae0;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-text: #ffffff;
+    --danger: #dc2626;
+    --danger-hover: #b91c1c;
+    --warning: #d97706;
+    --warning-hover: #b45309;
+    --success: #16a34a;
+    --badge-fifo: #7c3aed;
+    --badge-standard: #2563eb;
+    --link: #2563eb;
+    --link-hover: #1d4ed8;
+    --shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* ---- Reset ---- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--link);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+a:hover {
+    color: var(--link-hover);
+}
+
+/* ---- Navbar ---- */
+.navbar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow);
+}
+
+.nav-brand a {
+    color: var(--text);
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* ---- Nav links (tabs) ---- */
+.nav-links {
+    display: flex;
+    gap: 0.25rem;
+    margin-left: 1.5rem;
+}
+
+.nav-link {
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: background 0.15s, color 0.15s;
+}
+
+.nav-link:hover {
+    background: var(--bg-input);
+    color: var(--text);
+}
+
+.nav-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* ---- Container ---- */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+/* ---- Headings ---- */
+h1 {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+}
+
+h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+/* ============================================================
+   Buttons — Rounded pill shape
+   ============================================================ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.5rem 1.25rem;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    line-height: 1.4;
+    white-space: nowrap;
+    transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: var(--primary-text);
+}
+.btn-primary:hover {
+    background: var(--primary-hover);
+    box-shadow: var(--shadow-hover);
+}
+
+.btn-secondary {
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+.btn-secondary:hover {
+    background: var(--border);
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: #fff;
+}
+.btn-danger:hover {
+    background: var(--danger-hover);
+    box-shadow: var(--shadow-hover);
+}
+
+.btn-warning {
+    background: var(--warning);
+    color: #fff;
+}
+.btn-warning:hover {
+    background: var(--warning-hover);
+    box-shadow: var(--shadow-hover);
+}
+
+.btn-sm {
+    padding: 0.3rem 0.85rem;
+    font-size: 0.75rem;
+}
+
+.btn-icon {
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+}
+.btn-icon:hover {
+    background: var(--border);
+}
+
+/* ============================================================
+   Tables
+   ============================================================ */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    display: block;
+}
+
+.table th, .table td {
+    padding: 0.65rem 0.85rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table-compact th, .table-compact td {
+    padding: 0.45rem 0.7rem;
+}
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mono { font-family: "SF Mono", Monaco, "Cascadia Code", monospace; font-size: 0.8rem; }
+.url-cell {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.body-cell {
+    max-width: 350px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+.action-cell { white-space: nowrap; }
+
+/* ---- Badges — pill shape ---- */
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #fff;
+}
+
+.badge-fifo { background: var(--badge-fifo); }
+.badge-standard { background: var(--badge-standard); }
+
+/* ---- Cards ---- */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+}
+
+/* ---- Grid ---- */
+.grid.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+/* ---- Forms ---- */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group textarea {
+    width: 100%;
+    padding: 0.55rem 0.85rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.9rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+}
+
+.form-group textarea {
+    font-family: monospace;
+    resize: vertical;
+}
+
+.form-group input[type="checkbox"] {
+    margin-right: 0.4rem;
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 150px;
+}
+
+.hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+.muted { color: var(--text-muted); }
+.small { font-size: 0.75rem; }
+
+/* ---- Alerts — rounded ---- */
+.alert {
+    padding: 0.75rem 1.1rem;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.alert-success {
+    background: rgba(76, 175, 114, 0.12);
+    border: 1px solid var(--success);
+    color: var(--success);
+}
+
+.alert-error {
+    background: rgba(224, 85, 85, 0.12);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+}
+
+/* ---- Actions bar ---- */
+.actions-bar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+/* ---- Empty state ---- */
+.empty-state {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* ---- Theme toggle icons ---- */
+.theme-icon-light { display: none; }
+[data-theme="light"] .theme-icon-dark { display: none; }
+[data-theme="light"] .theme-icon-light { display: inline; }
+
+/* ---- Auto-refresh indicator ---- */
+.refresh-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+}
+
+.refresh-dot.active {
+    background: var(--success);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ---- Details/summary ---- */
+details summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    user-select: none;
+}
+
+/* ---- Metrics page ---- */
+.metric-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+.metric-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.raw-metrics {
+    max-height: 400px;
+    overflow: auto;
+    padding: 0.75rem;
+    background: var(--bg-input);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ============================================================
+   Responsive — Mobile & tablet breakpoints
+   ============================================================ */
+
+/* Tablet */
+@media (max-width: 900px) {
+    .grid.two-col {
+        grid-template-columns: 1fr;
+    }
+
+    .url-cell {
+        max-width: 180px;
+    }
+
+    .body-cell {
+        max-width: 200px;
+    }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+    .container {
+        padding: 1rem;
+    }
+
+    .navbar {
+        padding: 0.6rem 1rem;
+    }
+
+    .nav-brand a {
+        font-size: 1.1rem;
+    }
+
+    .nav-links {
+        margin-left: 0.5rem;
+        gap: 0.15rem;
+    }
+
+    .nav-link {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.75rem;
+    }
+
+    h1 {
+        font-size: 1.25rem;
+    }
+
+    /* Stack table cells vertically on small screens */
+    .table {
+        display: block;
+    }
+
+    .table thead {
+        display: none;
+    }
+
+    .table, .table tbody, .table tr, .table td {
+        display: block;
+        width: 100%;
+    }
+
+    .table tr {
+        margin-bottom: 0.75rem;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0.5rem;
+        background: var(--bg-card);
+    }
+
+    .table td {
+        border-bottom: none;
+        padding: 0.4rem 0.5rem;
+        text-align: right;
+        white-space: normal;
+    }
+
+    .table td::before {
+        content: attr(data-label);
+        float: left;
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted);
+    }
+
+    .table td:last-child {
+        text-align: right;
+    }
+
+    .num { text-align: right; }
+
+    .url-cell, .body-cell {
+        max-width: 100%;
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    .action-cell {
+        display: flex;
+        gap: 0.4rem;
+        justify-content: flex-end;
+    }
+
+    .form-row {
+        flex-direction: column;
+    }
+
+    .form-row .form-group {
+        min-width: 100%;
+    }
+
+    .actions-bar {
+        gap: 0.4rem;
+    }
+
+    .btn {
+        padding: 0.45rem 1rem;
+        font-size: 0.8rem;
+    }
+
+    .btn-sm {
+        padding: 0.3rem 0.7rem;
+        font-size: 0.7rem;
+    }
+
+    .card {
+        padding: 1rem;
+        border-radius: 10px;
+    }
+}
