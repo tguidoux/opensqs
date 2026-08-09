@@ -1,0 +1,19 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = [
+        "actions.go",
+        "adapter.go",
+        "handler.go",
+    ],
+    importpath = "github.com/tguidoux/opensqs/apps/go/server/handlers",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/go/server/metrics:go_default_library",
+        "//apps/go/server/protocol:go_default_library",
+        "//pkgs/v1/queue:go_default_library",
+        "//pkgs/v1/queue/dlq:go_default_library",
+        "//pkgs/v1/queue/types:go_default_library",
+    ],
+)

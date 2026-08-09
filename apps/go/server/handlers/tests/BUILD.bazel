@@ -1,0 +1,21 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_test")
+
+opensqs_go_test(
+    name = "go_default_test",
+    srcs = [
+        "bench_test.go",
+        "fifo_dlq_autocreate_test.go",
+        "handlers_test.go",
+        "move_task_test.go",
+    ],
+    deps = [
+        "//apps/go/server/handlers:go_default_library",
+        "//apps/go/server/protocol:go_default_library",
+        "//pkgs/v1/queue:go_default_library",
+        "//pkgs/v1/queue/store:go_default_library",
+        "//pkgs/v1/queue/store/memory:go_default_library",
+        "//pkgs/v1/queue/types:go_default_library",
+        "@com_github_stretchr_testify//assert:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
+    ],
+)

@@ -1,0 +1,71 @@
+server:
+  host: "0.0.0.0"
+  port: 9324
+  # tls:
+  #   enabled: false
+  #   certFile: "/path/to/cert.pem"
+  #   keyFile: "/path/to/key.pem"
+
+sqs:
+  nodeAddress: "localhost:9324"
+  accountId: "123456789012"
+  region: "us-east-1"
+  storageType: "memory"
+  # sqlitePath: "/data/opensqs.db"  # Uncomment and set storageType to "sqlite" for SQLite persistence
+  # badgerPath: "/data/badger"      # Uncomment and set storageType to "badger" for BadgerDB persistence
+  strictLimits: true
+  serverSecret: "dev-secret-key-change-in-production"
+
+log:
+  level: "info"
+
+health:
+  port: 8001
+  # tls:
+  #   enabled: false
+  #   certFile: "/path/to/cert.pem"
+  #   keyFile: "/path/to/key.pem"
+
+ui:
+  enabled: true
+  port: 9325
+  # tls:
+  #   enabled: false
+  #   certFile: "/path/to/cert.pem"
+  #   keyFile: "/path/to/key.pem"
+
+metrics:
+  enabled: true
+  port: 9326
+  # tls:
+  #   enabled: false
+  #   certFile: "/path/to/cert.pem"
+  #   keyFile: "/path/to/key.pem"
+
+environment: "local"
+
+# Structured HTTP request logging (method, path, status, duration, request ID)
+requestLogging:
+  enabled: false
+
+# Rate limiting (token bucket algorithm)
+rateLimit:
+  enabled: false
+  requestsPerSecond: 1000
+  burst: 100
+  perQueue: false
+
+# Optional: queues created at startup
+queues:
+  autoCreate: false
+  startup:
+    - name: "orders"
+      attributes:
+        visibilityTimeout: 60
+        receiveMessageWaitTimeSeconds: 5
+    - name: "notifications"
+    - name: "dead-letter.fifo"
+      attributes:
+        fifoQueue: true
+        contentBasedDeduplication: true
+        visibilityTimeout: 120
