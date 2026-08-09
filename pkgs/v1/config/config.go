@@ -15,7 +15,6 @@ const (
 type ConfigI[ConfigType any] interface {
 	Validate() error
 	WithValidation() ConfigType
-	readConfig()
 }
 
 type Config[ConfigType any] struct {

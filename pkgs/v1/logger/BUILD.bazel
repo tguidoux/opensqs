@@ -5,7 +5,6 @@ opensqs_go_library(
     srcs = [
         "contextual_logger.go",
         "factory.go",
-        "sync_logger.go",
         "uncontextual_logger.go",
     ],
     importpath = "github.com/tguidoux/opensqs/pkgs/v1/logger",

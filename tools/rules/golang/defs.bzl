@@ -230,11 +230,13 @@ def opensqs_go_image(name, binary, image_tags, tars = [], base = None, entrypoin
         visibility = ["//visibility:public"],
     )
 
-    oci_image_index(
+    # The multi_arch rule already produces an oci_image_index with all platforms.
+    # We alias it as the final target instead of wrapping in another oci_image_index,
+    # which would create a nested manifest list that the oci_image_index script
+    # cannot handle (it expects each manifest to have a .config field).
+    native.alias(
         name = name,
-        images = [
-            ":{}_multi_arch".format(name),
-        ],
+        actual = ":{}_multi_arch".format(name),
         visibility = ["//visibility:public"],
     )
 
