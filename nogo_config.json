@@ -1,0 +1,37 @@
+{
+    "_base": {
+        "description": "Base config that all subsequent analyzers, even unspecified will inherit.",
+        "exclude_files": {
+            "external/.*": "exclude all files under external/gazelle~ for all analyzers",
+            "^external/$": "exclude all files under external/gazelle~ for all analyzers"
+        }
+    },
+    "importunsafe": {
+        "exclude_files": {
+            "src/bar\\.go": "see issue #1337",
+            "src/foo\\.go": "manually verified that behavior is working-as-intended"
+        }
+    },
+    "unsafedom": {
+        "exclude_files": {
+            "src/(third_party|vendor)/.*": "enforce DOM safety requirements only on first-party code"
+        }
+    },
+    "unsafeptr": {
+        "exclude_files": {
+            "external/.*": "exclude all files under external/gazelle~ for all analyzers",
+            "^external/$": "exclude all files under external/gazelle~ for all analyzers"
+        }
+    },
+    "structtag": {
+        "exclude_files": {
+            "pkgs/v1/schemaorg/generated/.*": "generated schema.org types have duplicate JSON tags from struct embedding"
+        }
+    },
+    "nilness": {
+        "exclude_files": {
+            "pkgs/v1/majorisv3/api/client/generated/.*": "generated OpenAPI client code cannot be modified",
+            "pkgs/v1/sentinel/client/generated/.*": "generated OpenAPI client code cannot be modified"
+        }
+    }
+}

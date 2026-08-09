@@ -1,0 +1,3 @@
+# Go app targets are defined in their respective app directories.
+# This file is intentionally minimal since deployment orchestration
+# targets referenced apps that have been removed from the repo.

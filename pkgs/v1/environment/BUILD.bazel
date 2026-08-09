@@ -1,0 +1,8 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = ["env.go"],
+    importpath = "github.com/tguidoux/opensqs/pkgs/v1/environment",
+    visibility = ["//visibility:public"],
+)

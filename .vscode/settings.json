@@ -1,0 +1,18 @@
+{
+    // GitHub Copilot configuration
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    "github.copilot.chat.useInstructionFiles": true,
+    "github.copilot.chat.promptFiles": true,
+    "github.copilot.enable": {
+        "*": true,
+        "yaml": true,
+        "plaintext": false
+    },
+    "files.exclude": {
+        "**/.git": true,
+        "**/.DS_Store": true,
+        "**/node_modules": true,
+        "**/.venv": true,
+        "**/bazel-*": true
+    }
+}

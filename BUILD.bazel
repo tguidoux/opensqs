@@ -1,0 +1,132 @@
+load("@bazel_gazelle//:def.bzl", "gazelle", "gazelle_binary")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_go//go:def.bzl", "TOOLS_NOGO", "nogo")
+load("//tools/multirun:defs.bzl", "multi_run")
+
+exports_files(["WORKSPACE"])
+
+gazelle_binary(
+    name = "gazelle_multilang",
+    languages = [
+        # Go
+        "@bazel_gazelle//language/go",
+        # Bazel
+        "@bazel_skylib_gazelle_plugin//bzl",
+    ],
+)
+
+# gazelle:map_kind go_binary opensqs_go_binary //tools/rules/golang:defs.bzl
+# gazelle:map_kind go_library opensqs_go_library //tools/rules/golang:defs.bzl
+# gazelle:map_kind go_test opensqs_go_test //tools/rules/golang:defs.bzl
+# gazelle:build_file_name BUILD.bazel
+# gazelle:prefix github.com/tguidoux/opensqs
+# gazelle:go_naming_convention go_default_library
+# -- Excluded packages --
+## Go
+# gazelle:exclude **/*_gen.go
+# gazelle:exclude **/*_gen.graphql
+## Mac
+# gazelle:exclude **/.DS_Store
+## Emacs
+# gazelle:exclude **/.#*
+# gazelle:exclude **/.projectile
+# gazelle:exclude **/GPATH
+# gazelle:exclude **/GTAGS
+# gazelle:exclude **/GRTAGS
+## IntelliJ/GoLand
+# gazelle:exclude **/.idea
+# gazelle:exclude **/.ijwb
+# gazelle:exclude **/*.iml
+## VSCode
+# gazelle:exclude **/.vscode
+# gazelle:exclude *__debug_bin
+## terraform
+# gazelle:exclude **/.history/*
+# gazelle:exclude **/.terraform
+# gazelle:exclude **/.terraform.lock.hcl
+
+gazelle(
+    name = "gazelle",
+    gazelle = ":gazelle_multilang",
+)
+
+gazelle(
+    name = "gazelle-update-repos",
+    args = [
+        "-from_file=go.mod",
+        "-to_macro=deps.bzl%go_dependencies",
+        "-prune",
+    ],
+    command = "update-repos",
+)
+
+nogo(
+    name = "nogo",
+    config = ":nogo_config.json",
+    visibility = ["//visibility:public"],
+    deps = TOOLS_NOGO,
+)
+
+bzl_library(
+    name = "deps",
+    srcs = ["deps.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["@bazel_gazelle//:deps"],
+)
+
+multi_run(
+    name = "clean",
+    targets = [
+        "//:gazelle",
+        "//:go.clean",
+        "//:bazel.clean",
+        "//:gazelle",  # re-run gazelle to pick up any changes
+    ],
+)
+
+multi_run(
+    name = "bazel.clean",
+    targets = [
+        "//:buildifier -r $BUILD_WORKING_DIRECTORY",
+    ],
+)
+
+multi_run(
+    name = "go.fmt",
+    targets = [
+        "//:go fmt $BUILD_WORKING_DIRECTORY/...",
+    ],
+)
+
+multi_run(
+    name = "go.clean",
+    targets = [
+        "//:go.fmt",
+        "//:gazelle",
+        "//:gazelle-update-repos",
+    ],
+)
+
+# Go
+alias(
+    name = "go",
+    actual = "@rules_go//go:go",
+)
+
+# Bazel builds
+
+alias(
+    name = "buildifier",
+    actual = "@buildifier_prebuilt//:buildifier",
+)
+
+alias(
+    name = "buildozer",
+    actual = "@buildifier_prebuilt//:buildozer",
+)
+
+# CI tools
+alias(
+    name = "get_affected_targets",
+    actual = "//tools/ci/get_affected_targets:get_affected_targets",
+)

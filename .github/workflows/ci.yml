@@ -1,0 +1,298 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual trigger
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ==============================================================================
+  # Analyze changes to determine which tests need to run (using Go tool)
+  # ==============================================================================
+  analyze-changes:
+    name: Analyze Changed Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      affected-tests: ${{ steps.detect.outputs.tests }}
+      has-tests: ${{ steps.detect.outputs.has-tests }}
+      test-count: ${{ steps.detect.outputs.count }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history required for accurate diff
+      
+      - name: Configure Git
+        run: |
+          # Fetch base branch for comparison
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          fi
+      
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+      
+      - name: Detect affected test targets
+        id: detect
+        run: |
+          set -euo pipefail
+          
+          # Determine base reference for comparison
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+            echo "📊 Analyzing changes in PR #${{ github.event.pull_request.number }}"
+          else
+            BASE_REF="HEAD^"
+            echo "📊 Analyzing changes in commit ${{ github.sha }}"
+          fi
+          
+          echo "🔍 Comparing against: $BASE_REF"
+          echo ""
+
+          export DEBUG=true
+          
+          # Run get_affected_targets - logs go to stderr (visible), targets go to stdout (captured)
+          # Redirect stderr to stdout so GitHub Actions shows the logs, then capture only the final line
+          AFFECTED_TESTS=$(bazel run //tools/ci/get_affected_targets -- -base "$BASE_REF" -types test 2>&1 | tee /dev/stderr | tail -1 | tr -d '\n' | sed 's/[[:space:]]*$//')
+          
+          # Parse results
+          if [ -z "$AFFECTED_TESTS" ] || [ "$AFFECTED_TESTS" = " " ]; then
+            echo "✅ No tests affected by changes"
+            echo "has-tests=false" >> $GITHUB_OUTPUT
+            echo "tests=" >> $GITHUB_OUTPUT
+            echo "count=0" >> $GITHUB_OUTPUT
+          else
+            # Count test targets
+            TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -w | tr -d ' ')
+            echo "✅ Found $TEST_COUNT affected test target(s)"
+            echo "has-tests=true" >> $GITHUB_OUTPUT
+            echo "tests=$AFFECTED_TESTS" >> $GITHUB_OUTPUT
+            echo "count=$TEST_COUNT" >> $GITHUB_OUTPUT
+          fi
+
+  # ==============================================================================
+  # Execute affected test targets
+  # ==============================================================================
+  run-tests:
+    name: Run Affected Tests
+    runs-on: ubuntu-latest
+    needs: analyze-changes
+    if: needs.analyze-changes.result == 'success' && needs.analyze-changes.outputs.has-tests == 'true'
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+      
+      - name: Prepare test targets
+        id: filter
+        run: |
+          set -euo pipefail
+          
+          HAS_TESTS="${{ needs.analyze-changes.outputs.has-tests }}"
+          TESTS="${{ needs.analyze-changes.outputs.affected-tests }}"
+          
+          if [ "$HAS_TESTS" != "true" ]; then
+            echo "ℹ️  No test targets affected by changes"
+            echo ""
+            echo "This is expected when changes only affect:"
+            echo "  • Documentation files (.md, .txt)"
+            echo "  • Infrastructure configuration (terraform, k8s)"
+            echo "  • CI/CD workflows (.github/)"
+            echo "  • Development tooling without tests"
+            echo ""
+            echo "has-runnable-tests=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Strip any ANSI color codes that might have leaked through
+          TESTS=$(echo "$TESTS" | sed 's/\x1b\[[0-9;]*m//g')
+          
+          echo "📋 Affected test targets:"
+          echo "$TESTS" | tr ' ' '\n' | sed 's/^/  - /'
+          echo ""
+          
+          # Test filtering is now handled by get_affected_targets
+          # via .affected-targets-config.yaml at the repo root.
+          # This ensures identical behavior between CI and local runs:
+          #   bazel test $(bazel run //tools/ci/get_affected_targets -- -types test)
+          
+          TEST_COUNT=$(echo "$TESTS" | wc -w | tr -d ' ')
+          echo "✅ $TEST_COUNT test target(s) will be executed"
+          echo "has-runnable-tests=true" >> $GITHUB_OUTPUT
+          echo "tests=$TESTS" >> $GITHUB_OUTPUT
+      
+      - name: Execute tests
+        if: steps.filter.outputs.has-runnable-tests == 'true'
+        run: |
+          set -euo pipefail
+          
+          TESTS="${{ steps.filter.outputs.tests }}"
+          
+          echo "🧪 Running Bazel tests..."
+          echo ""
+          
+          # Execute tests with reasonable timeout and show output
+          bazel test \
+            --test_timeout=600 \
+            --test_output=errors \
+            --test_summary=detailed \
+            $TESTS
+          
+          echo ""
+          echo "✅ All tests passed successfully"
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            bazel-testlogs/**/test.log
+            bazel-testlogs/**/test.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ==============================================================================
+  # Summary job that always runs
+  # ==============================================================================
+  test-summary:
+    name: Tests Summary
+    runs-on: ubuntu-latest
+    needs: [analyze-changes, run-tests]
+    if: always()
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Generate summary
+        id: summary
+        run: |
+          set -euo pipefail
+          
+          # Generate summary for both GitHub UI and PR comment
+          SUMMARY="## 🧪 Test Execution Summary"
+          SUMMARY="${SUMMARY}\n"
+          
+          # Retrieve job statuses
+          ANALYZE_STATUS="${{ needs.analyze-changes.result }}"
+          RUN_TESTS_STATUS="${{ needs.run-tests.result }}"
+          HAS_TESTS="${{ needs.analyze-changes.outputs.has-tests }}"
+          TEST_COUNT="${{ needs.analyze-changes.outputs.test-count }}"
+          
+          # Determine overall status and generate appropriate message
+          if [ "$ANALYZE_STATUS" = "failure" ]; then
+            SUMMARY="${SUMMARY}\n❌ **Pipeline failed** - Change analysis failed"
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nThe workflow encountered an error during the change analysis phase."
+            SUMMARY="${SUMMARY}\nPlease review the workflow logs for details."
+          elif [ "$RUN_TESTS_STATUS" = "failure" ]; then
+            if [ "$HAS_TESTS" = "true" ] && [ -n "$TEST_COUNT" ]; then
+              SUMMARY="${SUMMARY}\n❌ **Tests failed** ($TEST_COUNT target(s))"
+              SUMMARY="${SUMMARY}\n"
+              SUMMARY="${SUMMARY}\nSome tests did not pass. Please review the test logs and fix the failing tests."
+            else
+              SUMMARY="${SUMMARY}\n❌ **Test execution failed**"
+              SUMMARY="${SUMMARY}\n"
+              SUMMARY="${SUMMARY}\nThe test execution phase encountered an error. Please review the workflow logs."
+            fi
+          elif [ "$HAS_TESTS" != "true" ]; then
+            SUMMARY="${SUMMARY}\nℹ️  **No tests required**"
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nNo test targets were affected by these changes."
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nThis typically occurs when changes only affect:"
+            SUMMARY="${SUMMARY}\n- Documentation files (.md, .txt)"
+            SUMMARY="${SUMMARY}\n- Infrastructure configuration (terraform, k8s)"
+            SUMMARY="${SUMMARY}\n- CI/CD workflows"
+            SUMMARY="${SUMMARY}\n- Development tooling without associated tests"
+          elif [ "$RUN_TESTS_STATUS" = "success" ]; then
+            SUMMARY="${SUMMARY}\n✅ **All tests passed** ($TEST_COUNT target(s))"
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nAll affected tests completed successfully."
+          elif [ "$RUN_TESTS_STATUS" = "skipped" ]; then
+            SUMMARY="${SUMMARY}\n⚠️ **Tests skipped** ($TEST_COUNT target(s))"
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nTest execution was skipped. This may occur when all affected tests are excluded from CI."
+          elif [ "$RUN_TESTS_STATUS" = "cancelled" ]; then
+            SUMMARY="${SUMMARY}\n⚠️ **Tests cancelled** ($TEST_COUNT target(s))"
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nTest execution was cancelled before completion."
+          else
+            SUMMARY="${SUMMARY}\n⚠️ **Unknown status** ($RUN_TESTS_STATUS)"
+            SUMMARY="${SUMMARY}\n"
+            SUMMARY="${SUMMARY}\nThe test execution finished with an unexpected status. Please review the workflow logs."
+          fi
+          
+          SUMMARY="${SUMMARY}\n"
+          SUMMARY="${SUMMARY}\n---"
+          SUMMARY="${SUMMARY}\n**Workflow run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          
+          # Write to GitHub Step Summary
+          echo -e "$SUMMARY" >> $GITHUB_STEP_SUMMARY
+          
+          # Save for PR comment (escape for multiline output)
+          {
+            echo "summary<<EOF"
+            echo -e "$SUMMARY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `${{ steps.summary.outputs.summary }}`;
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🧪 Test Execution Summary')
+            );
+            
+            const commentBody = summary + `\n\n<sub>Updated at ${new Date().toUTCString()}</sub>`;
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }

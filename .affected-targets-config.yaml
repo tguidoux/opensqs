@@ -1,0 +1,57 @@
+# Configuration for get_affected_targets tool
+# This file is read by //tools/ci/get_affected_targets to determine which
+# files and targets to skip when analyzing affected targets.
+#
+# Using this config ensures identical behavior between CI and local development:
+#   bazel run //tools/ci/get_affected_targets -- -types test
+#   bazel test $(bazel run //tools/ci/get_affected_targets -- -types test)
+#
+# Structure:
+# - global: patterns applied to ALL target types
+# - test/build/run: patterns specific to each type (combined with global)
+
+# =============================================================================
+# Global patterns - applied to all target types (test, build, run)
+# =============================================================================
+global:
+  # Files that never affect any targets
+  skip_file_patterns:
+    - ^\.github/
+    - ^\.vscode/
+    - ^docs/
+
+  # Extensions that never affect any targets
+  skip_extensions:
+    - .md
+    - .txt
+    - .yaml
+    - .yml
+    - .json
+
+  skip_target_patterns: []
+
+# =============================================================================
+# Test-specific patterns (in addition to global)
+# =============================================================================
+test:
+  skip_file_patterns:
+    - ^tools/
+    - ^MODULE\.bazel$
+    - ^WORKSPACE
+    - ^deps\.bzl$
+    - ^go\.mod$
+    - ^go\.sum$
+
+  skip_target_patterns: []
+
+# =============================================================================
+# Build-specific patterns (in addition to global)
+# =============================================================================
+build:
+  # No additional patterns beyond global
+
+# =============================================================================
+# Run-specific patterns (in addition to global)
+# =============================================================================
+run:
+  # No additional patterns beyond global
