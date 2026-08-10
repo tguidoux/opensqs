@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"sync"
 	"time"
@@ -431,7 +432,7 @@ func (s *BadgerStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 	}
 
 	if !found {
-		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 	}
 
 	return nil
@@ -492,7 +493,7 @@ func (s *BadgerStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 	}
 
 	if !found {
-		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 	}
 
 	return nil
@@ -767,13 +768,14 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 	// Redrive messages and delete from this queue in a single transaction
 	err = s.db.Update(func(txn *badger.Txn) error {
 		for _, rc := range toRedrive {
-			rc.msg.ReceiptHandle = ""
-			rc.msg.IsVisible = true
-			rc.msg.ApproximateReceiveCount = 0
+			store.PrepareForRedrive(rc.msg)
 			s.redriveFunc(rc.msg)
 			txn.Delete(rc.key)
 		}
 		return nil
 	})
 	_ = err // redrive errors are non-fatal; messages will be retried on next ReceiveMessages
+	if err != nil {
+		log.Printf("badger: redrive iteration error (non-fatal, will retry): %v", err)
+	}
 }

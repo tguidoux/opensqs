@@ -89,3 +89,13 @@ func Now() time.Time {
 func SetNowFunc(f func() time.Time) {
 	nowFunc.Store(&f)
 }
+
+// PrepareForRedrive resets a message's state before sending it to a DLQ.
+// This clears the receipt handle, marks the message as visible, and resets
+// the approximate receive count so the message gets a fresh start in the DLQ.
+// Store implementations should call this before invoking RedriveFunc.
+func PrepareForRedrive(msg *types.Message) {
+	msg.ReceiptHandle = ""
+	msg.IsVisible = true
+	msg.ApproximateReceiveCount = 0
+}

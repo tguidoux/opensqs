@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 
@@ -192,22 +193,23 @@ func (qm *QueueManager) LookupQueueByArn(arn string) (*Queue, error) {
 }
 
 // redriveMessage sends a message to the dead-letter queue identified by the given ARN.
-// Errors are silently ignored to match SQS behavior (redrive is best-effort).
+// Errors are logged but not returned to match SQS behavior (redrive is best-effort).
 func (qm *QueueManager) redriveMessage(dlqArn string, msg *types.Message) {
 	dlqQueue, err := qm.LookupQueueByArn(dlqArn)
 	if err != nil {
 		// DLQ doesn't exist — cannot redrive, message is lost
 		// This matches AWS SQS behavior where a misconfigured DLQ silently drops messages
+		log.Printf("redrive: DLQ %s not found, message %s will be lost: %v", dlqArn, msg.MessageID, err)
 		return
 	}
 
 	// Reset message state for redelivery
-	msg.ReceiptHandle = ""
-	msg.IsVisible = true
-	msg.ApproximateReceiveCount = 0
+	store.PrepareForRedrive(msg)
 
 	// Send to the DLQ with no delay
-	_ = dlqQueue.Store().SendMessage(context.Background(), msg, 0)
+	if err := dlqQueue.Store().SendMessage(context.Background(), msg, 0); err != nil {
+		log.Printf("redrive: failed to send message %s to DLQ %s: %v", msg.MessageID, dlqArn, err)
+	}
 }
 
 // AccountID returns the configured account ID.

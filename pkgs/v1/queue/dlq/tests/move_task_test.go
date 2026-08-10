@@ -141,10 +141,10 @@ func TestStartTask_WithExplicitDestination(t *testing.T) {
 		0,
 	)
 	require.NoError(t, err)
-	assert.NotEmpty(t, task.TaskHandle)
-	assert.Equal(t, dlq.MoveTaskStatusRunning, task.Status)
-	assert.Equal(t, "arn:aws:sqs:us-east-1:123456789012:src", task.SourceArn)
-	assert.Equal(t, "arn:aws:sqs:us-east-1:123456789012:dst", task.DestinationArn)
+	assert.NotEmpty(t, task.TaskHandle())
+	assert.Equal(t, dlq.MoveTaskStatusRunning, task.Status())
+	assert.Equal(t, "arn:aws:sqs:us-east-1:123456789012:src", task.SourceArn())
+	assert.Equal(t, "arn:aws:sqs:us-east-1:123456789012:dst", task.DestinationArn())
 
 	// Wait for task to complete
 	time.Sleep(200 * time.Millisecond)
@@ -158,9 +158,9 @@ func TestStartTask_WithExplicitDestination(t *testing.T) {
 	assert.Empty(t, srcMsgs)
 
 	// Verify task status
-	task, ok := mtm.GetTask(task.TaskHandle)
+	task, ok := mtm.GetTask(task.TaskHandle())
 	require.True(t, ok)
-	assert.Equal(t, dlq.MoveTaskStatusCompleted, task.Status)
+	assert.Equal(t, dlq.MoveTaskStatusCompleted, task.Status())
 	assert.Equal(t, 3, task.MovedMessages())
 }
 
@@ -182,8 +182,8 @@ func TestStartTask_AutoDiscoverDestination(t *testing.T) {
 	// Start task with empty destination — should auto-discover main queue
 	task, err := mtm.StartTask(dlqArn, "", 0)
 	require.NoError(t, err)
-	assert.NotEmpty(t, task.TaskHandle)
-	assert.Equal(t, mainArn, task.DestinationArn)
+	assert.NotEmpty(t, task.TaskHandle())
+	assert.Equal(t, mainArn, task.DestinationArn())
 
 	// Wait for task to complete
 	time.Sleep(200 * time.Millisecond)
@@ -230,21 +230,21 @@ func TestStartTask_RateLimiting(t *testing.T) {
 	// After 100ms, at most ~1 message should have been moved (2/sec = 500ms per msg)
 	time.Sleep(100 * time.Millisecond)
 
-	task, _ = mtm.GetTask(task.TaskHandle)
+	task, _ = mtm.GetTask(task.TaskHandle())
 	assert.LessOrEqual(t, task.MovedMessages(), 1)
 
 	// Poll for completion — 3 messages at 2/sec = ~1.5s, but allow up to 10s
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		task, _ = mtm.GetTask(task.TaskHandle)
-		if task.Status == dlq.MoveTaskStatusCompleted {
+		task, _ = mtm.GetTask(task.TaskHandle())
+		if task.Status() == dlq.MoveTaskStatusCompleted {
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	task, _ = mtm.GetTask(task.TaskHandle)
-	assert.Equal(t, dlq.MoveTaskStatusCompleted, task.Status)
+	task, _ = mtm.GetTask(task.TaskHandle())
+	assert.Equal(t, dlq.MoveTaskStatusCompleted, task.Status())
 	assert.Equal(t, 3, task.MovedMessages())
 }
 
@@ -281,21 +281,21 @@ func TestCancelTask_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Cancel the task
-	moved, err := mtm.CancelTask(task.TaskHandle)
+	moved, err := mtm.CancelTask(task.TaskHandle())
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, moved, 0)
 
 	// Wait for the background goroutine to process the cancellation
 	// and update the status from CANCELLING to CANCELLED
 	require.Eventually(t, func() bool {
-		task, ok := mtm.GetTask(task.TaskHandle)
-		return ok && task.Status == dlq.MoveTaskStatusCancelled
+		task, ok := mtm.GetTask(task.TaskHandle())
+		return ok && task.Status() == dlq.MoveTaskStatusCancelled
 	}, 2*time.Second, 10*time.Millisecond)
 
 	// Verify task status
-	task, ok := mtm.GetTask(task.TaskHandle)
+	task, ok := mtm.GetTask(task.TaskHandle())
 	require.True(t, ok)
-	assert.Equal(t, dlq.MoveTaskStatusCancelled, task.Status)
+	assert.Equal(t, dlq.MoveTaskStatusCancelled, task.Status())
 }
 
 func TestCancelTask_AlreadyCancelled(t *testing.T) {
@@ -311,11 +311,11 @@ func TestCancelTask_AlreadyCancelled(t *testing.T) {
 	require.NoError(t, err)
 
 	// Cancel once
-	_, err = mtm.CancelTask(task.TaskHandle)
+	_, err = mtm.CancelTask(task.TaskHandle())
 	require.NoError(t, err)
 
 	// Cancel again — should not error, just return current count
-	moved, err := mtm.CancelTask(task.TaskHandle)
+	moved, err := mtm.CancelTask(task.TaskHandle())
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, moved, 0)
 }
@@ -378,16 +378,16 @@ func TestListTasks_FilterBySourceArn(t *testing.T) {
 	// List tasks for src2
 	src2Tasks := mtm.ListTasks("arn:aws:sqs:us-east-1:123456789012:src2")
 	assert.Len(t, src2Tasks, 1)
-	assert.Equal(t, task3.TaskHandle, src2Tasks[0].TaskHandle)
+	assert.Equal(t, task3.TaskHandle(), src2Tasks[0].TaskHandle())
 
 	// List all tasks
 	allTasks := mtm.ListTasks("")
 	assert.Len(t, allTasks, 3)
 
 	// Verify task handles
-	handles := map[string]bool{task1.TaskHandle: true, task2.TaskHandle: true, task3.TaskHandle: true}
+	handles := map[string]bool{task1.TaskHandle(): true, task2.TaskHandle(): true, task3.TaskHandle(): true}
 	for _, task := range allTasks {
-		assert.True(t, handles[task.TaskHandle], "unexpected task handle: %s", task.TaskHandle)
+		assert.True(t, handles[task.TaskHandle()], "unexpected task handle: %s", task.TaskHandle())
 	}
 }
 
@@ -413,11 +413,11 @@ func TestGetTask_Found(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	found, ok := mtm.GetTask(task.TaskHandle)
+	found, ok := mtm.GetTask(task.TaskHandle())
 	require.True(t, ok)
-	assert.Equal(t, task.TaskHandle, found.TaskHandle)
-	assert.Equal(t, task.SourceArn, found.SourceArn)
-	assert.Equal(t, task.DestinationArn, found.DestinationArn)
+	assert.Equal(t, task.TaskHandle(), found.TaskHandle())
+	assert.Equal(t, task.SourceArn(), found.SourceArn())
+	assert.Equal(t, task.DestinationArn(), found.DestinationArn())
 }
 
 // ---------------------------------------------------------------------------
@@ -449,7 +449,7 @@ func TestMoveTaskManager_ConcurrentStartTasks(t *testing.T) {
 			)
 			require.NoError(t, err)
 			mu.Lock()
-			handles[idx] = task.TaskHandle
+			handles[idx] = task.TaskHandle()
 			mu.Unlock()
 		}(i)
 	}

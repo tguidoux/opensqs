@@ -1,11 +1,10 @@
 package middleware
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"net/http"
 	"time"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/id"
 	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 )
 
@@ -40,14 +39,8 @@ func RequestLogger(log logger.LoggerInterface) Middleware {
 	}
 }
 
-// generateRequestID creates a random 16-byte hex-encoded request ID.
-// Uses crypto/rand for uniqueness. Falls back to a timestamp-based ID
-// if random generation fails.
+// generateRequestID creates a unique request ID.
+// Uses crypto/rand for uniqueness via the shared id package.
 func generateRequestID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback: use UnixNano for uniqueness
-		return hex.EncodeToString([]byte(time.Now().UTC().Format("20060102150405.000000000")))
-	}
-	return hex.EncodeToString(b)
+	return id.NewHexID()
 }

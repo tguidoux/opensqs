@@ -79,8 +79,11 @@ func (e *ConcreteSQSError) HTTPStatusCode() int { return e.HTTPStatusValue }
 func (e *ConcreteSQSError) ErrorType() string   { return e.ErrorTypeValue }
 func (e *ConcreteSQSError) Message() string     { return e.ErrorMessageValue }
 
-// Error factory functions for common SQS errors.
+// Error factory functions for use by store implementations that cannot import
+// the queue package (to avoid circular dependencies). The queue package
+// re-exports these via SQSError aliases in errors.go.
 
+// NewReceiptHandleIsInvalid creates a ReceiptHandleIsInvalid error.
 func NewReceiptHandleIsInvalid(msg string) *ConcreteSQSError {
 	return &ConcreteSQSError{
 		CodeValue:         "ReceiptHandleIsInvalid",
@@ -90,6 +93,7 @@ func NewReceiptHandleIsInvalid(msg string) *ConcreteSQSError {
 	}
 }
 
+// NewInvalidParameterValue creates an InvalidParameterValue error.
 func NewInvalidParameterValue(msg string) *ConcreteSQSError {
 	return &ConcreteSQSError{
 		CodeValue:         "InvalidParameterValue",

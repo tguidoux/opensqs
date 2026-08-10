@@ -32,27 +32,34 @@ func GlobalRateLimiter(rps float64, burst int) Middleware {
 // (/{accountId}/{queueName}). Each queue gets its own token bucket.
 // When the rate is exceeded, it responds with 429 Too Many Requests.
 // A background goroutine periodically removes idle limiters to prevent
-// unbounded memory growth.
-func PerQueueRateLimiter(rps float64, burst int) Middleware {
+// unbounded memory growth. The goroutine is stopped when the returned
+// cleanup function is called.
+func PerQueueRateLimiter(rps float64, burst int) (Middleware, func()) {
 	var (
 		mu       sync.Mutex
 		limiters = make(map[string]*rate.Limiter)
+		stop     = make(chan struct{})
 	)
 
 	// Clean up idle limiters every 5 minutes to prevent unbounded growth.
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			mu.Lock()
-			// Remove limiters that have fully replenished their burst budget,
-			// meaning they haven't been used recently.
-			for name, l := range limiters {
-				if l.Tokens() >= float64(burst) {
-					delete(limiters, name)
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				// Remove limiters that have fully replenished their burst budget,
+				// meaning they haven't been used recently.
+				for name, l := range limiters {
+					if l.Tokens() >= float64(burst) {
+						delete(limiters, name)
+					}
 				}
+				mu.Unlock()
+			case <-stop:
+				return
 			}
-			mu.Unlock()
 		}
 	}()
 
@@ -67,7 +74,7 @@ func PerQueueRateLimiter(rps float64, burst int) Middleware {
 		return l
 	}
 
-	return func(next http.Handler) http.Handler {
+	mw := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			queueName := ExtractQueueName(r.URL.Path)
 			if queueName == "" {
@@ -85,6 +92,9 @@ func PerQueueRateLimiter(rps float64, burst int) Middleware {
 			next.ServeHTTP(w, r)
 		})
 	}
+
+	cleanup := func() { close(stop) }
+	return mw, cleanup
 }
 
 // extractQueueName parses the queue name from the URL path.

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/tguidoux/opensqs/apps/go/server/metrics"
@@ -155,9 +156,9 @@ func NewHandler(manager *queue.QueueManager, limits *queue.Limits, autoCreate bo
 	}
 	listFn := func(prefix string) []dlq.QueueRef {
 		queues := manager.ListQueues(prefix)
-		refs := make([]dlq.QueueRef, 0, len(queues))
-		for _, q := range queues {
-			refs = append(refs, q)
+		refs := make([]dlq.QueueRef, len(queues))
+		for i, q := range queues {
+			refs[i] = q
 		}
 		return refs
 	}
@@ -252,7 +253,10 @@ func (h *Handler) resolveQueue(queueURL string) (*queue.Queue, error) {
 			name := queue.ExtractQueueNameFromURL(queueURL)
 			if name != "" {
 				attrs := queue.NewDefaultQueueAttributes()
-				if q, createErr := h.manager.CreateQueue(name, attrs); createErr == nil {
+				q, createErr := h.manager.CreateQueue(name, attrs)
+				if createErr != nil {
+					log.Printf("auto-create failed for queue %q: %v", name, createErr)
+				} else {
 					return q, nil
 				}
 			}

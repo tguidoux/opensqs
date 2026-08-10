@@ -53,7 +53,7 @@ func TestPerQueueRateLimiterAllows(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := middleware.PerQueueRateLimiter(100, 10)
+	mw, _ := middleware.PerQueueRateLimiter(100, 10)
 	wrapped := mw(handler)
 
 	req := httptest.NewRequest("GET", "/123456789012/my-queue", nil)
@@ -68,7 +68,7 @@ func TestPerQueueRateLimiterRejects(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := middleware.PerQueueRateLimiter(1, 1)
+	mw, _ := middleware.PerQueueRateLimiter(1, 1)
 	wrapped := mw(handler)
 
 	// First request for queue-a should pass
@@ -95,7 +95,7 @@ func TestPerQueueRateLimiterRefills(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := middleware.PerQueueRateLimiter(100, 1)
+	mw, _ := middleware.PerQueueRateLimiter(100, 1)
 	wrapped := mw(handler)
 
 	// First request passes

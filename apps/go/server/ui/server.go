@@ -109,8 +109,11 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		// HSTS only makes sense over HTTPS; set it unconditionally so TLS terminators benefit
-		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// HSTS only makes sense over HTTPS — only set it when the request
+		// is already over TLS (directly or via a TLS-terminating proxy).
+		if r.TLS != nil {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

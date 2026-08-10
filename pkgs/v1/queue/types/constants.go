@@ -100,6 +100,9 @@ const (
 	MaxDeduplicationIdLength        = 128
 	MaxMessageGroupIdLength         = 128
 	MaxKmsDataKeyReusePeriodSeconds = 86400 // 24 hours
+	MaxQueueTags                    = 50
+	MaxTagKeyLength                 = 128
+	MaxTagValueLength               = 256
 )
 
 // Min SQS limits.

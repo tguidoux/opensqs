@@ -149,7 +149,9 @@ func main() {
 	}
 	if cfg.RateLimit.Enabled {
 		if cfg.RateLimit.PerQueue {
-			middlewares = append(middlewares, middleware.PerQueueRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst))
+			mw, cleanup := middleware.PerQueueRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
+			middlewares = append(middlewares, mw)
+			defer cleanup()
 		} else {
 			middlewares = append(middlewares, middleware.GlobalRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst))
 		}

@@ -231,6 +231,7 @@ func (s *MemoryStore) receiveMessage(mm *memoryMessage, visibilityTimeout int, n
 		if s.maxReceiveCount > 0 && mm.receiveCount >= s.maxReceiveCount && s.redriveFunc != nil {
 			// Redrive the message — remove from store and send to DLQ
 			s.removeMessage(mm)
+			store.PrepareForRedrive(mm.msg)
 			s.redriveFunc(mm.msg)
 			s.notifyWaiters()
 			return
@@ -270,7 +271,7 @@ func (s *MemoryStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 		}
 	}
 
-	return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+	return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 }
 
 // ChangeMessageVisibility updates the visibility timeout of a message.
@@ -304,9 +305,7 @@ func (s *MemoryStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 					// Check if message should be redrived to a dead-letter queue
 					if s.maxReceiveCount > 0 && mm.receiveCount >= s.maxReceiveCount && s.redriveFunc != nil {
 						s.removeMessage(mm)
-						s.redriveFunc(mm.msg)
-						s.notifyWaiters()
-						return
+						store.PrepareForRedrive(mm.msg)
 					}
 
 					mm.msg.IsVisible = true
@@ -323,7 +322,7 @@ func (s *MemoryStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 		}
 	}
 
-	return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+	return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 }
 
 // ApproximateNumberOfMessages returns the count of visible messages.

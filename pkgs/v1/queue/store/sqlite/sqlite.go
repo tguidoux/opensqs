@@ -424,7 +424,7 @@ func (s *SQLiteStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 	}
 
 	return nil
@@ -453,7 +453,7 @@ func (s *SQLiteStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 		}
 		rows, _ := result.RowsAffected()
 		if rows == 0 {
-			return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+			return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 		}
 		return nil
 	}
@@ -469,7 +469,7 @@ func (s *SQLiteStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
+		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 	}
 
 	return nil
@@ -688,9 +688,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 	defer deleteStmt.Close()
 
 	for i, msg := range toRedrive {
-		msg.ReceiptHandle = ""
-		msg.IsVisible = true
-		msg.ApproximateReceiveCount = 0
+		store.PrepareForRedrive(msg)
 		s.redriveFunc(msg)
 
 		if _, err := deleteStmt.ExecContext(ctx, idsToDelete[i]); err != nil {

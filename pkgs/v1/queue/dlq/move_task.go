@@ -2,13 +2,13 @@ package dlq
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/id"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 )
 
@@ -46,17 +46,35 @@ const (
 
 // MoveTask represents a single message move task that transfers messages
 // from a source queue (typically a DLQ) to a destination queue.
+// All fields are unexported; use the getter methods for thread-safe access.
 type MoveTask struct {
-	TaskHandle                   string
-	SourceArn                    string
-	DestinationArn               string
-	Status                       MoveTaskStatus
-	MaxNumberOfMessagesPerSecond int
+	taskHandle                   string
+	sourceArn                    string
+	destinationArn               string
+	status                       MoveTaskStatus
+	maxNumberOfMessagesPerSecond int
 	movedMessages                atomic.Int64
-	StartedAt                    time.Time
+	startedAt                    time.Time
 	cancelled                    chan struct{}
 	cancelOnce                   sync.Once
 }
+
+// TaskHandle returns the unique handle for this task.
+func (t *MoveTask) TaskHandle() string { return t.taskHandle }
+
+// SourceArn returns the source queue ARN.
+func (t *MoveTask) SourceArn() string { return t.sourceArn }
+
+// DestinationArn returns the destination queue ARN.
+func (t *MoveTask) DestinationArn() string { return t.destinationArn }
+
+// Status returns the current task status.
+// Callers should obtain the MoveTask via MoveTaskManager methods (ListTasks, GetTask)
+// which hold the read lock, ensuring a consistent snapshot.
+func (t *MoveTask) Status() MoveTaskStatus { return t.status }
+
+// MaxNumberOfMessagesPerSecond returns the rate limit for this task.
+func (t *MoveTask) MaxNumberOfMessagesPerSecond() int { return t.maxNumberOfMessagesPerSecond }
 
 // MovedMessages returns the number of messages moved so far.
 // This method is thread-safe.
@@ -64,25 +82,73 @@ func (t *MoveTask) MovedMessages() int {
 	return int(t.movedMessages.Load())
 }
 
+// StartedAt returns the time the task was started.
+func (t *MoveTask) StartedAt() time.Time { return t.startedAt }
+
+// taskTTL is how long a completed/cancelled/failed task is kept before cleanup.
+const taskTTL = 24 * time.Hour
+
+// taskCleanupInterval is how often the background cleanup runs.
+const taskCleanupInterval = 1 * time.Hour
+
 // MoveTaskManager manages the lifecycle of message move tasks.
 // It tracks active and completed tasks, starts background goroutines
 // to move messages, and supports cancellation.
+// Completed tasks are automatically cleaned up after taskTTL.
 type MoveTaskManager struct {
-	mu       sync.RWMutex
-	tasks    map[string]*MoveTask
-	lookupFn QueueLookupFunc
-	listFn   QueueListFunc
+	mu          sync.RWMutex
+	tasks       map[string]*MoveTask
+	lookupFn    QueueLookupFunc
+	listFn      QueueListFunc
+	stopCleanup chan struct{}
 }
 
 // NewMoveTaskManager creates a new MoveTaskManager wired to the given lookup and list functions.
 // The lookup function resolves a queue by ARN, the list function lists queues by prefix.
 // Both are typically wired from *queue.QueueManager.
 func NewMoveTaskManager(lookupFn QueueLookupFunc, listFn QueueListFunc) *MoveTaskManager {
-	return &MoveTaskManager{
-		tasks:    make(map[string]*MoveTask),
-		lookupFn: lookupFn,
-		listFn:   listFn,
+	mtm := &MoveTaskManager{
+		tasks:       make(map[string]*MoveTask),
+		lookupFn:    lookupFn,
+		listFn:      listFn,
+		stopCleanup: make(chan struct{}),
 	}
+	go mtm.cleanupLoop()
+	return mtm
+}
+
+// cleanupLoop periodically removes completed tasks older than taskTTL.
+func (mtm *MoveTaskManager) cleanupLoop() {
+	ticker := time.NewTicker(taskCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			mtm.removeStaleTasks()
+		case <-mtm.stopCleanup:
+			return
+		}
+	}
+}
+
+// removeStaleTasks removes completed/cancelled/failed tasks older than taskTTL.
+func (mtm *MoveTaskManager) removeStaleTasks() {
+	mtm.mu.Lock()
+	defer mtm.mu.Unlock()
+	now := time.Now()
+	for handle, t := range mtm.tasks {
+		if t.status == MoveTaskStatusRunning || t.status == MoveTaskStatusCancelling {
+			continue
+		}
+		if now.Sub(t.startedAt) > taskTTL {
+			delete(mtm.tasks, handle)
+		}
+	}
+}
+
+// Close stops the cleanup goroutine. Call this when the manager is no longer needed.
+func (mtm *MoveTaskManager) Close() {
+	close(mtm.stopCleanup)
 }
 
 // StartTask creates and starts a new message move task.
@@ -133,12 +199,12 @@ func (mtm *MoveTaskManager) StartTask(sourceArn, destinationArn string, maxRate 
 
 	taskHandle := generateTaskHandle()
 	task := &MoveTask{
-		TaskHandle:                   taskHandle,
-		SourceArn:                    sourceArn,
-		DestinationArn:               destinationArn,
-		Status:                       MoveTaskStatusRunning,
-		MaxNumberOfMessagesPerSecond: maxRate,
-		StartedAt:                    time.Now().UTC(),
+		taskHandle:                   taskHandle,
+		sourceArn:                    sourceArn,
+		destinationArn:               destinationArn,
+		status:                       MoveTaskStatusRunning,
+		maxNumberOfMessagesPerSecond: maxRate,
+		startedAt:                    time.Now().UTC(),
 		cancelled:                    make(chan struct{}),
 	}
 
@@ -162,14 +228,14 @@ func (mtm *MoveTaskManager) CancelTask(taskHandle string) (int, error) {
 		return 0, fmt.Errorf("task not found: %s", taskHandle)
 	}
 
-	if task.Status != MoveTaskStatusRunning {
+	if task.status != MoveTaskStatusRunning {
 		return int(task.movedMessages.Load()), nil
 	}
 
 	// Mark as cancelling and signal the background goroutine.
 	// The goroutine will set the final Cancelled status when it stops.
 	// sync.Once prevents panic on double-cancel.
-	task.Status = MoveTaskStatusCancelling
+	task.status = MoveTaskStatusCancelling
 	task.cancelOnce.Do(func() {
 		close(task.cancelled)
 	})
@@ -185,7 +251,7 @@ func (mtm *MoveTaskManager) ListTasks(sourceArn string) []*MoveTask {
 
 	var result []*MoveTask
 	for _, t := range mtm.tasks {
-		if sourceArn == "" || t.SourceArn == sourceArn {
+		if sourceArn == "" || t.sourceArn == sourceArn {
 			result = append(result, t)
 		}
 	}
@@ -206,8 +272,8 @@ func (mtm *MoveTaskManager) GetTask(taskHandle string) (*MoveTask, bool) {
 // optionally rate-limited via a time.Ticker.
 func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQueue, destQueue QueueRef) {
 	var ticker *time.Ticker
-	if task.MaxNumberOfMessagesPerSecond > 0 {
-		interval := time.Second / time.Duration(task.MaxNumberOfMessagesPerSecond)
+	if task.maxNumberOfMessagesPerSecond > 0 {
+		interval := time.Second / time.Duration(task.maxNumberOfMessagesPerSecond)
 		ticker = time.NewTicker(interval)
 		defer ticker.Stop()
 	}
@@ -226,6 +292,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 		// Receive up to 10 messages with no long polling
 		messages, err := sourceQueue.Store().ReceiveMessages(ctx, 10, 30, 0)
 		if err != nil {
+			log.Printf("move task %s: failed to receive messages from source: %v", task.taskHandle, err)
 			mtm.setTaskStatus(task, MoveTaskStatusFailed)
 			return
 		}
@@ -251,19 +318,19 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 
 			// Send to destination first to avoid message loss.
 			// If the send fails, the message stays in the source queue.
-			msg.ReceiptHandle = ""
-			msg.IsVisible = true
-			msg.ApproximateReceiveCount = 0
+			store.PrepareForRedrive(msg)
 
 			if err := destQueue.Store().SendMessage(ctx, msg, 0); err != nil {
 				// Send failed — message remains in source queue (not deleted)
+				log.Printf("move task %s: failed to send message to destination: %v", task.taskHandle, err)
 				continue
 			}
 
 			// Now safe to delete from source
 			if err := sourceQueue.Store().DeleteMessage(ctx, msg.ReceiptHandle); err != nil {
 				// Delete failed — message may be delivered twice (at-least-once)
-				// This is acceptable per SQS semantics
+				// This is acceptable per SQS semantics, but log for observability.
+				log.Printf("move task %s: failed to delete message from source (may duplicate): %v", task.taskHandle, err)
 			}
 
 			task.movedMessages.Add(1)
@@ -274,16 +341,11 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 // setTaskStatus safely updates a task's status.
 func (mtm *MoveTaskManager) setTaskStatus(task *MoveTask, status MoveTaskStatus) {
 	mtm.mu.Lock()
-	task.Status = status
+	task.status = status
 	mtm.mu.Unlock()
 }
 
-// generateTaskHandle creates a unique task handle using crypto/rand.
+// generateTaskHandle creates a unique task handle.
 func generateTaskHandle() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to timestamp if crypto/rand fails
-		return fmt.Sprintf("%x", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+	return id.NewHexID()
 }
