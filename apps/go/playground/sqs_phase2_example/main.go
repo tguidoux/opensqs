@@ -6,9 +6,9 @@ package main
 //   - Send messages with MessageAttributes (String, Number, Binary types)
 //   - Set and get queue attributes (SetQueueAttributes)
 //   - Tag and untag queues (TagQueue, UntagQueue, ListQueueTags)
-//   - Send messages in batch (SendMessageBatch)
-//   - Delete messages in batch (DeleteMessageBatch)
-//   - Change message visibility in batch (ChangeMessageVisibilityBatch)
+//   - Send multiple messages (simulating batch send via store API)
+//   - Delete multiple messages (simulating batch delete via store API)
+//   - Change message visibility for multiple messages
 //
 // Run with:
 //

@@ -1,3 +1,5 @@
+// Package queue provides the core SQS queue engine, including queue management,
+// message operations, visibility timeouts, and pluggable storage backends.
 package queue
 
 import (
@@ -64,7 +66,8 @@ func (q *Queue) SetTags(tags map[string]string) {
 
 // IsFifo returns true if this is a FIFO queue.
 func (q *Queue) IsFifo() bool {
-	return q.attributes.FifoQueue
+	val, _ := q.attributes.GetAttribute(types.AttributeFifoQueue)
+	return val == "true"
 }
 
 // GetQueueArn returns the queue ARN from attributes.
@@ -93,7 +96,7 @@ func (q *Queue) URL(nodeAddress, accountID string) string {
 
 // ARN returns the ARN for this queue.
 func (q *Queue) ARN(region, accountID string) string {
-	return fmt.Sprintf("arn:aws:sqs:%s:%s:%s", region, accountID, q.name)
+	return buildQueueARN(region, accountID, q.name)
 }
 
 // ApproximateNumberOfMessages returns the approximate count of available messages.

@@ -228,8 +228,6 @@ h2 {
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 1rem;
-    overflow-x: auto;
-    display: block;
 }
 
 .table th, .table td {

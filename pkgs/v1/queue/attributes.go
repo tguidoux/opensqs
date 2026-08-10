@@ -193,13 +193,27 @@ func (a *QueueAttributes) SetAttribute(name, value string) error {
 }
 
 // AllAttributes returns all attributes as a map of name to string value.
+// Acquires the read lock once for efficiency.
 func (a *QueueAttributes) AllAttributes() map[string]string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	result := make(map[string]string)
-	for _, name := range AllAttributeNames() {
-		if v, ok := a.GetAttribute(name); ok {
-			result[name] = v
-		}
-	}
+	result[types.AttributeVisibilityTimeout] = strconv.Itoa(a.VisibilityTimeout)
+	result[types.AttributeDelaySeconds] = strconv.Itoa(a.DelaySeconds)
+	result[types.AttributeMaximumMessageSize] = strconv.Itoa(a.MaximumMessageSize)
+	result[types.AttributeMessageRetentionPeriod] = strconv.Itoa(a.MessageRetentionPeriod)
+	result[types.AttributeReceiveMessageWaitTimeSeconds] = strconv.Itoa(a.ReceiveMessageWaitTimeSeconds)
+	result[types.AttributeQueueArn] = a.QueueArn
+	result[types.AttributePolicy] = a.Policy
+	result[types.AttributeRedrivePolicy] = a.RedrivePolicy
+	result[types.AttributeFifoQueue] = strconv.FormatBool(a.FifoQueue)
+	result[types.AttributeContentBasedDeduplication] = strconv.FormatBool(a.ContentBasedDeduplication)
+	result[types.AttributeKmsMasterKeyId] = a.KmsMasterKeyId
+	result[types.AttributeKmsDataKeyReusePeriodSeconds] = strconv.Itoa(a.KmsDataKeyReusePeriodSeconds)
+	result[types.AttributeDeduplicationScope] = a.DeduplicationScope
+	result[types.AttributeFifoThroughputLimit] = a.FifoThroughputLimit
+	result[types.AttributeSqsManagedSseEnabled] = strconv.FormatBool(a.SqsManagedSseEnabled)
 	return result
 }
 

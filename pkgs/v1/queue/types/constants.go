@@ -1,3 +1,5 @@
+// Package types defines SQS message types, attribute structures, and API constants
+// used throughout the OpenSQS queue engine.
 package types
 
 // SQS API version — all responses include this in the XML/JSON envelope.
@@ -92,7 +94,6 @@ const (
 	MaxMaximumMessageSize           = 262144  // 256 KiB
 	MaxDelaySeconds                 = 900     // 15 minutes
 	MaxReceiveMessageWaitTime       = 20
-	MaxMessageBodySize              = 262144 // 256 KiB
 	MaxNumberOfMessages             = 10
 	MaxBatchEntries                 = 10
 	MaxQueueNameLength              = 80

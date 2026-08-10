@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -123,7 +124,7 @@ func TestReceiveMultipleMessages(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.Message{
-			MessageID: "msg-" + string(rune('0'+i)),
+			MessageID: "msg-" + strconv.Itoa(i),
 			Body:      "body",
 		}
 		err := s.SendMessage(context.Background(), msg, 0)
@@ -200,7 +201,7 @@ func TestPurge(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.Message{
-			MessageID: "msg-" + string(rune('0'+i)),
+			MessageID: "msg-" + strconv.Itoa(i),
 			Body:      "body",
 		}
 		err := s.SendMessage(context.Background(), msg, 0)
@@ -220,6 +221,8 @@ func TestConcurrentAccess(t *testing.T) {
 	defer s.Close()
 
 	var wg sync.WaitGroup
+	var sendErrs []error
+	var sendMu sync.Mutex
 
 	// Concurrent senders
 	for i := 0; i < 10; i++ {
@@ -227,10 +230,14 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			msg := &types.Message{
-				MessageID: "msg-" + string(rune('0'+n)),
+				MessageID: "msg-" + strconv.Itoa(n),
 				Body:      "body",
 			}
-			_ = s.SendMessage(context.Background(), msg, 0)
+			if err := s.SendMessage(context.Background(), msg, 0); err != nil {
+				sendMu.Lock()
+				sendErrs = append(sendErrs, err)
+				sendMu.Unlock()
+			}
 		}(i)
 	}
 
@@ -244,6 +251,11 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// All sends should have succeeded
+	assert.Empty(t, sendErrs, "concurrent sends should not produce errors")
+	// All 10 messages should be in the store (some may have been received)
+	assert.GreaterOrEqual(t, s.ApproximateNumberOfMessages(), 0)
 }
 
 func TestLongPolling(t *testing.T) {

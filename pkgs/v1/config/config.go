@@ -1,3 +1,5 @@
+// Package config provides YAML-based configuration loading with schema validation
+// and environment-specific overrides for OpenSQS services.
 package config
 
 import (

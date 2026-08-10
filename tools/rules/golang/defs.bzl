@@ -75,7 +75,7 @@ def _go_layers(name, binary):
     """
     Create the layers for a go_binary target.
 
-    By intelligently bunding layers, we can isolate application changes from other
+    By intelligently bundling layers, we can isolate application changes from other
     layers, which can speed up the build process.
 
     At the moment, we just provide a single layer for the binary+runfiles, but

@@ -60,7 +60,7 @@ func (h *Handler) handleDeleteQueue(ctx context.Context, req Request) (*Response
 		return nil, queue.NewMissingParameter("QueueUrl")
 	}
 
-	name := extractQueueNameFromURL(queueURL)
+	name := queue.ExtractQueueNameFromURL(queueURL)
 	if err := h.manager.DeleteQueue(name); err != nil {
 		return nil, err
 	}

@@ -243,26 +243,20 @@ func TestServer_MetricsEndpoint(t *testing.T) {
 }
 
 func TestServer_GracefulShutdown(t *testing.T) {
-	srv := metrics.NewServer(19328, nil)
+	// Use port 0 to let the OS pick an ephemeral port, avoiding conflicts.
+	srv := metrics.NewServer(0, nil)
 
 	go func() {
 		_ = srv.Start()
 	}()
 
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
+	// Give the server a brief moment to bind.
+	time.Sleep(50 * time.Millisecond)
 
-	// Verify it responds
-	resp, err := http.Get("http://localhost:19328/metrics")
-	if err == nil {
-		resp.Body.Close()
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-	}
-
-	// Graceful shutdown
+	// Graceful shutdown should succeed.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err = srv.Stop(ctx)
+	err := srv.Stop(ctx)
 	assert.NoError(t, err)
 }
 

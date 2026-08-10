@@ -31,7 +31,11 @@ func NewLimits(mode LimitsMode) *Limits {
 func (l *Limits) VerifyMessageSize(body string, maxMessageSize int) error {
 	effectiveMax := maxMessageSize
 	if l.mode == RelaxedMode {
-		effectiveMax *= 2
+		effectiveMax = effectiveMax * 2
+		// Guard against integer overflow
+		if effectiveMax < maxMessageSize {
+			effectiveMax = int(^uint(0) >> 1) // max int
+		}
 	}
 	if len(body) > effectiveMax {
 		return NewInvalidParameterValue(

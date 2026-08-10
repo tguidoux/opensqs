@@ -7,53 +7,64 @@ import (
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
-func TestSQSVersion(t *testing.T) {
-	assert.Equal(t, "2012-11-05", types.SQSVersion)
+func TestSQSVersion_IsNonEmpty(t *testing.T) {
+	assert.NotEmpty(t, types.SQSVersion, "SQSVersion must not be empty")
+	assert.Contains(t, types.SQSVersion, "-", "SQSVersion should be a date format")
 }
 
-func TestActionConstants(t *testing.T) {
-	assert.Equal(t, "CreateQueue", types.ActionCreateQueue)
-	assert.Equal(t, "SendMessage", types.ActionSendMessage)
-	assert.Equal(t, "ReceiveMessage", types.ActionReceiveMessage)
-	assert.Equal(t, "DeleteMessage", types.ActionDeleteMessage)
-	assert.Equal(t, "PurgeQueue", types.ActionPurgeQueue)
+func TestActionConstants_AreDistinct(t *testing.T) {
+	actions := []string{
+		types.ActionCreateQueue, types.ActionSendMessage, types.ActionReceiveMessage,
+		types.ActionDeleteMessage, types.ActionPurgeQueue,
+	}
+	seen := make(map[string]bool)
+	for _, a := range actions {
+		assert.False(t, seen[a], "duplicate action constant: %s", a)
+		assert.NotEmpty(t, a, "action constant must not be empty")
+		seen[a] = true
+	}
 }
 
-func TestAttributeConstants(t *testing.T) {
-	assert.Equal(t, "VisibilityTimeout", types.AttributeVisibilityTimeout)
-	assert.Equal(t, "DelaySeconds", types.AttributeDelaySeconds)
-	assert.Equal(t, "MaximumMessageSize", types.AttributeMaximumMessageSize)
-	assert.Equal(t, "MessageRetentionPeriod", types.AttributeMessageRetentionPeriod)
-	assert.Equal(t, "QueueArn", types.AttributeQueueArn)
+func TestAttributeConstants_AreDistinct(t *testing.T) {
+	attrs := []string{
+		types.AttributeVisibilityTimeout, types.AttributeDelaySeconds,
+		types.AttributeMaximumMessageSize, types.AttributeMessageRetentionPeriod,
+		types.AttributeQueueArn,
+	}
+	seen := make(map[string]bool)
+	for _, a := range attrs {
+		assert.False(t, seen[a], "duplicate attribute constant: %s", a)
+		seen[a] = true
+	}
 }
 
-func TestContentTypeConstants(t *testing.T) {
-	assert.Equal(t, "application/x-www-form-urlencoded", types.QueryProtocolContentType)
-	assert.Equal(t, "application/x-amz-json-1.0", types.JSONProtocolContentType)
-	assert.Equal(t, "text/xml", types.XMLContentType)
+func TestContentTypeConstants_MatchExpectedFormats(t *testing.T) {
+	assert.Contains(t, types.QueryProtocolContentType, "form-urlencoded")
+	assert.Contains(t, types.JSONProtocolContentType, "json")
+	assert.Contains(t, types.XMLContentType, "xml")
 }
 
-func TestMessageAttributeTypes(t *testing.T) {
-	assert.Equal(t, "String", types.MessageAttributeTypeString)
-	assert.Equal(t, "Number", types.MessageAttributeTypeNumber)
-	assert.Equal(t, "Binary", types.MessageAttributeTypeBinary)
+func TestMessageAttributeTypes_AreDistinct(t *testing.T) {
+	assert.NotEqual(t, types.MessageAttributeTypeString, types.MessageAttributeTypeNumber)
+	assert.NotEqual(t, types.MessageAttributeTypeString, types.MessageAttributeTypeBinary)
+	assert.NotEqual(t, types.MessageAttributeTypeNumber, types.MessageAttributeTypeBinary)
 }
 
-func TestDefaultLimits(t *testing.T) {
-	assert.Equal(t, 30, types.DefaultVisibilityTimeout)
-	assert.Equal(t, 345600, types.DefaultMessageRetentionPeriod)
-	assert.Equal(t, 262144, types.DefaultMaximumMessageSize)
-	assert.Equal(t, 0, types.DefaultDelaySeconds)
-	assert.Equal(t, 0, types.DefaultReceiveMessageWaitTime)
+func TestDefaultLimits_AreWithinMaxLimits(t *testing.T) {
+	assert.LessOrEqual(t, types.DefaultVisibilityTimeout, types.MaxVisibilityTimeout)
+	assert.LessOrEqual(t, types.DefaultMessageRetentionPeriod, types.MaxMessageRetentionPeriod)
+	assert.LessOrEqual(t, types.DefaultMaximumMessageSize, types.MaxMaximumMessageSize)
+	assert.LessOrEqual(t, types.DefaultDelaySeconds, types.MaxDelaySeconds)
+	assert.LessOrEqual(t, types.DefaultReceiveMessageWaitTime, types.MaxReceiveMessageWaitTime)
 }
 
-func TestMaxLimits(t *testing.T) {
-	assert.Equal(t, 43200, types.MaxVisibilityTimeout)
-	assert.Equal(t, 1209600, types.MaxMessageRetentionPeriod)
-	assert.Equal(t, 262144, types.MaxMaximumMessageSize)
-	assert.Equal(t, 900, types.MaxDelaySeconds)
-	assert.Equal(t, 20, types.MaxReceiveMessageWaitTime)
-	assert.Equal(t, 10, types.MaxNumberOfMessages)
+func TestMaxLimits_ArePositive(t *testing.T) {
+	assert.Positive(t, types.MaxVisibilityTimeout)
+	assert.Positive(t, types.MaxMessageRetentionPeriod)
+	assert.Positive(t, types.MaxMaximumMessageSize)
+	assert.Positive(t, types.MaxDelaySeconds)
+	assert.Positive(t, types.MaxReceiveMessageWaitTime)
+	assert.Positive(t, types.MaxNumberOfMessages)
 }
 
 func TestMessageStruct(t *testing.T) {

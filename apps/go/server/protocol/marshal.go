@@ -5,8 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"strings"
-
-	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -473,9 +471,4 @@ func jsonMarshal(v any) ([]byte, error) {
 // MarshalJSONResponse marshals a JSON response struct to JSON bytes.
 func MarshalJSONResponse(v any) ([]byte, error) {
 	return jsonMarshal(v)
-}
-
-// NewRequestID generates a request ID placeholder.
-func NewRequestID() string {
-	return types.EmptyRequestID
 }

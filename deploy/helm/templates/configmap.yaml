@@ -28,7 +28,7 @@ data:
       badgerPath: {{ .Values.opensqs.sqs.badgerPath | quote }}
       {{- end }}
       strictLimits: {{ .Values.opensqs.sqs.strictLimits }}
-      serverSecret: {{ include "opensqs.serverSecret" . | quote }}
+      # serverSecret is loaded from the Kubernetes Secret via SQS__SERVERSECRET env var
     log:
       level: {{ .Values.opensqs.logLevel | quote }}
     health:

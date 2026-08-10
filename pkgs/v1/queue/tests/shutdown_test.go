@@ -2,6 +2,9 @@ package queue_test
 
 import (
 	"context"
+	"database/sql"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -9,18 +12,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
-	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/sqlite"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
 func TestShutdown_NoQueues(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 	err := qm.Shutdown(context.Background())
 	assert.NoError(t, err)
 }
 
 func TestShutdown_ClosesAllStores(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	// Create multiple queues
 	for _, name := range []string{"q1", "q2", "q3"} {
@@ -46,7 +49,7 @@ func TestShutdown_ClosesAllStores(t *testing.T) {
 }
 
 func TestShutdown_Idempotent(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -61,7 +64,7 @@ func TestShutdown_Idempotent(t *testing.T) {
 }
 
 func TestShutdown_WithDeadline(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -75,7 +78,7 @@ func TestShutdown_WithDeadline(t *testing.T) {
 }
 
 func TestShutdown_AfterOperations(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -98,7 +101,7 @@ func TestShutdown_AfterOperations(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestShutdown_WithSQLiteStore verifies shutdown works with SQLite stores too.
+// TestShutdown_WithSQLiteStore verifies shutdown works with SQLite stores.
 func TestShutdown_WithSQLiteStore(t *testing.T) {
 	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
 		return newSQLiteStore(queueName, visibilityTimeout, serverSecret, cfg)
@@ -113,10 +116,13 @@ func TestShutdown_WithSQLiteStore(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// newSQLiteStore creates a SQLite store for testing (avoids importing sqlite directly
-// which requires CGO). Uses memory store as fallback if SQLite isn't available.
+// newSQLiteStore creates a SQLite store for testing using a temporary file.
 func newSQLiteStore(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
-	// Use memory store for this test — the shutdown behavior is the same
-	// (both implement store.Store with Close() error)
-	return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
+	dbPath := filepath.Join(os.TempDir(), "opensqs-shutdown-test-"+queueName+".db")
+	os.Remove(dbPath) // Clean up any stale file
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return sqlite.NewSQLiteStore(db, queueName, visibilityTimeout, serverSecret, cfg)
 }

@@ -1,3 +1,5 @@
+// Package memory provides an in-memory Store implementation for OpenSQS queues,
+// using time.AfterFunc for visibility timeout management.
 package memory
 
 import (
@@ -460,13 +462,40 @@ func computeContentBasedDedupID(body string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// copyMessage creates a shallow copy of a Message to prevent callers from
-// mutating the store's internal state.
+// copyMessage creates a deep copy of a Message to prevent callers from
+// mutating the store's internal state. Maps and slices are copied
+// so that modifications to the returned message do not affect the
+// store's internal copy.
 func copyMessage(src *types.Message) *types.Message {
 	if src == nil {
 		return nil
 	}
 	dst := *src
+	// Deep copy MessageAttributes map
+	if src.MessageAttributes != nil {
+		dst.MessageAttributes = make(map[string]types.MessageAttribute, len(src.MessageAttributes))
+		for k, v := range src.MessageAttributes {
+			// Copy binary value slice
+			if v.BinaryValue != nil {
+				copied := make([]byte, len(v.BinaryValue))
+				copy(copied, v.BinaryValue)
+				v.BinaryValue = copied
+			}
+			dst.MessageAttributes[k] = v
+		}
+	}
+	// Deep copy SystemAttributes map
+	if src.SystemAttributes != nil {
+		dst.SystemAttributes = make(map[string]types.MessageSystemAttribute, len(src.SystemAttributes))
+		for k, v := range src.SystemAttributes {
+			if v.BinaryValue != nil {
+				copied := make([]byte, len(v.BinaryValue))
+				copy(copied, v.BinaryValue)
+				v.BinaryValue = copied
+			}
+			dst.SystemAttributes[k] = v
+		}
+	}
 	return &dst
 }
 

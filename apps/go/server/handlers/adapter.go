@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -404,9 +405,7 @@ func marshalXMLResponse(resp *Response) ([]byte, error) {
 			ResponseMetadata: protocol.ResponseMetadata{RequestID: resp.RequestID},
 		})
 	default:
-		return protocol.MarshalXMLResponse(protocol.DeleteQueueResponse{
-			ResponseMetadata: protocol.ResponseMetadata{RequestID: resp.RequestID},
-		})
+		return nil, fmt.Errorf("unknown action for XML marshaling: %s", resp.Action)
 	}
 }
 
@@ -564,9 +563,7 @@ func marshalJSONResponse(resp *Response) ([]byte, error) {
 			RequestID: resp.RequestID,
 		})
 	default:
-		return protocol.MarshalJSONResponse(protocol.JSONDeleteQueueResponse{
-			RequestID: resp.RequestID,
-		})
+		return nil, fmt.Errorf("unknown action for JSON marshaling: %s", resp.Action)
 	}
 }
 

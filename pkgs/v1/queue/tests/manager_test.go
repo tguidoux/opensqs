@@ -2,6 +2,7 @@ package queue_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,15 +13,20 @@ import (
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
-func newTestManager() *queue.QueueManager {
+func newTestManager(t *testing.T) *queue.QueueManager {
+	t.Helper()
 	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
 		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
-	return queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)
+	qm := queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)
+	t.Cleanup(func() {
+		_ = qm.Shutdown(context.Background())
+	})
+	return qm
 }
 
 func TestCreateQueue(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -29,7 +35,7 @@ func TestCreateQueue(t *testing.T) {
 }
 
 func TestCreateQueueDuplicate(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -41,7 +47,7 @@ func TestCreateQueueDuplicate(t *testing.T) {
 }
 
 func TestCreateQueueDuplicateDifferentAttrs(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -54,7 +60,7 @@ func TestCreateQueueDuplicateDifferentAttrs(t *testing.T) {
 }
 
 func TestDeleteQueue(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -67,14 +73,14 @@ func TestDeleteQueue(t *testing.T) {
 }
 
 func TestDeleteQueueNotFound(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	err := qm.DeleteQueue("nonexistent")
 	assert.Error(t, err)
 }
 
 func TestLookupQueue(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -85,14 +91,14 @@ func TestLookupQueue(t *testing.T) {
 }
 
 func TestLookupQueueNotFound(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.LookupQueue("nonexistent")
 	assert.Error(t, err)
 }
 
 func TestLookupQueueByURL(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -104,7 +110,7 @@ func TestLookupQueueByURL(t *testing.T) {
 }
 
 func TestListQueues(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, _ = qm.CreateQueue("queue-a", nil)
 	_, _ = qm.CreateQueue("queue-b", nil)
@@ -115,7 +121,7 @@ func TestListQueues(t *testing.T) {
 }
 
 func TestListQueuesWithPrefix(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, _ = qm.CreateQueue("queue-a", nil)
 	_, _ = qm.CreateQueue("queue-b", nil)
@@ -126,7 +132,7 @@ func TestListQueuesWithPrefix(t *testing.T) {
 }
 
 func TestListQueueURLs(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	_, _ = qm.CreateQueue("test-queue", nil)
 
@@ -137,14 +143,14 @@ func TestListQueueURLs(t *testing.T) {
 }
 
 func TestQueueURL(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	url := qm.QueueURL("my-queue")
 	assert.Equal(t, "http://localhost:9324/000000000000/my-queue", url)
 }
 
 func TestQueueURLMethod(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("my-queue", nil)
 	require.NoError(t, err)
@@ -154,7 +160,7 @@ func TestQueueURLMethod(t *testing.T) {
 }
 
 func TestQueueARN(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("my-queue", nil)
 	require.NoError(t, err)
@@ -164,7 +170,7 @@ func TestQueueARN(t *testing.T) {
 }
 
 func TestQueueIsFifo(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	attrs := queue.NewDefaultQueueAttributes()
 	attrs.FifoQueue = true
@@ -175,7 +181,7 @@ func TestQueueIsFifo(t *testing.T) {
 }
 
 func TestQueueGetAttributeComputed(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -194,7 +200,7 @@ func TestQueueGetAttributeComputed(t *testing.T) {
 }
 
 func TestQueueGetAttributeRegular(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -205,19 +211,31 @@ func TestQueueGetAttributeRegular(t *testing.T) {
 }
 
 func TestPurgeQueue(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	q, err := qm.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
 	require.NotNil(t, q)
 
-	// Purge should work on empty queue
+	// Send some messages before purging
+	for i := 0; i < 5; i++ {
+		err := q.Store().SendMessage(context.Background(), &types.Message{
+			MessageID: "msg-" + strconv.Itoa(i),
+			Body:      "body",
+			IsVisible: true,
+		}, 0)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 5, q.Store().ApproximateNumberOfMessages())
+
+	// Purge should remove all messages
 	err = qm.PurgeQueue(context.Background(), "test-queue")
 	require.NoError(t, err)
+	assert.Equal(t, 0, q.Store().ApproximateNumberOfMessages())
 }
 
 func TestPurgeQueueNotFound(t *testing.T) {
-	qm := newTestManager()
+	qm := newTestManager(t)
 
 	err := qm.PurgeQueue(context.Background(), "nonexistent")
 	assert.Error(t, err)

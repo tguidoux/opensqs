@@ -11,16 +11,36 @@ import (
 	"strings"
 )
 
+// isTTY returns true if stdout is a terminal (not piped or redirected).
+func isTTY() bool {
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
 // ─── ANSI Colors ────────────────────────────────────────────────────────────
 
-const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[0;31m"
-	colorGreen  = "\033[0;32m"
-	colorYellow = "\033[1;33m"
-	colorBlue   = "\033[0;34m"
-	colorBold   = "\033[1m"
+var (
+	colorReset  = ""
+	colorRed    = ""
+	colorGreen  = ""
+	colorYellow = ""
+	colorBlue   = ""
+	colorBold   = ""
 )
+
+func initColors() {
+	if isTTY() {
+		colorReset = "\033[0m"
+		colorRed = "\033[0;31m"
+		colorGreen = "\033[0;32m"
+		colorYellow = "\033[1;33m"
+		colorBlue = "\033[0;34m"
+		colorBold = "\033[1m"
+	}
+}
 
 func info(format string, args ...any) {
 	fmt.Printf("%sℹ️  %s%s\n", colorBlue, fmt.Sprintf(format, args...), colorReset)
@@ -57,6 +77,8 @@ type flags struct {
 	skipTag     bool
 	skipRelease bool
 	dryRun      bool
+	draft       bool
+	preRelease  bool
 }
 
 func parseFlags(args []string) flags {
@@ -72,6 +94,10 @@ func parseFlags(args []string) flags {
 			f.skipRelease = true
 		case "--dry-run":
 			f.dryRun = true
+		case "--draft":
+			f.draft = true
+		case "--pre-release":
+			f.preRelease = true
 		case "-h", "--help":
 			printUsage()
 			os.Exit(0)
@@ -97,6 +123,8 @@ Options:
   --skip-tag              Skip git tag creation and push
   --skip-release          Skip GitHub Release creation
   --dry-run               Show what would happen without making changes
+  --draft                 Create the GitHub Release as a draft
+  --pre-release           Mark the GitHub Release as a pre-release
   -h, --help              Show this help message
 
 Examples:
@@ -104,6 +132,8 @@ Examples:
   release v1.0.0                 # Release v1.0.0
   release v2.0.0 --skip-image    # Tag v2.0.0, skip image push
   release --dry-run              # Preview what would happen
+  release v0.9.0 --pre-release   # Create a pre-release
+  release v1.0.0 --draft         # Create a draft release
 `)
 }
 
@@ -239,6 +269,7 @@ func tagExists(tag string) bool {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 func main() {
+	initColors()
 	f := parseFlags(os.Args[1:])
 
 	repoRoot := getRepoRoot()
@@ -386,6 +417,12 @@ func main() {
 	} else {
 		if f.dryRun {
 			info("[dry-run] Would create GitHub Release: %s", f.version)
+			if f.draft {
+				info("[dry-run] Release would be created as a draft")
+			}
+			if f.preRelease {
+				info("[dry-run] Release would be marked as pre-release")
+			}
 		} else {
 			// Generate release notes from commits since the previous tag.
 			// previousTag was captured before the new tag was created.
@@ -399,11 +436,19 @@ func main() {
 			notes := fmt.Sprintf("## Changes\n\n%s\n\n## Docker Image\n\n```\ndocker pull %s:%s\n```\n\n## Helm\n\n```bash\nhelm install opensqs deploy/helm \\\n  --set image.tag=%s\n```\n",
 				releaseNotes, ghcrRepo, f.version, f.version)
 
-			if err := runCommandInteractive("gh", "release", "create", f.version,
-				"--title", "Release "+f.version,
+			ghArgs := []string{"release", "create", f.version,
+				"--title", "Release " + f.version,
 				"--notes", notes,
 				"--verify-tag",
-			); err != nil {
+			}
+			if f.draft {
+				ghArgs = append(ghArgs, "--draft")
+			}
+			if f.preRelease {
+				ghArgs = append(ghArgs, "--prerelease")
+			}
+
+			if err := runCommandInteractive("gh", ghArgs...); err != nil {
 				fail("Failed to create GitHub Release: %v", err)
 			}
 			ok("GitHub Release created: %s", f.version)

@@ -81,8 +81,10 @@ opensqs:
     badgerPath: "/data/badger"
     # -- Enforce SQS limits strictly
     strictLimits: true
-    # -- Server secret for signing receipt handles (use a secret reference in production)
-    serverSecret: "change-me-in-production"
+    # -- Server secret for signing receipt handles (REQUIRED in production)
+    # Set this value, or use existingSecret to reference a Kubernetes Secret.
+    # If both are empty, the chart will fail to render.
+    serverSecret: ""
 
   # -- Log level: "debug", "info", "warn", "error"
   logLevel: "info"
@@ -223,6 +225,15 @@ livenessProbe:
   initialDelaySeconds: 15
   periodSeconds: 20
 
+# -- Startup probe (useful for slow-starting instances)
+startupProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  failureThreshold: 30
+
 # -- Autoscaling (requires metrics server)
 autoscaling:
   enabled: false
@@ -234,8 +245,24 @@ autoscaling:
 # -- Extra environment variables
 extraEnv: []
 
+# -- Extra envFrom (e.g., ConfigMap or Secret references)
+extraEnvFrom: []
+
 # -- Extra volumes
 extraVolumes: []
 
 # -- Extra volume mounts
 extraVolumeMounts: []
+
+# -- Priority class name for the pod
+priorityClassName: ""
+
+# -- Network policy configuration
+networkPolicy:
+  enabled: false
+  ingress:
+    allowAll: true
+    rules: []
+  egress:
+    allowAll: true
+    rules: []

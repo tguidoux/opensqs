@@ -69,3 +69,13 @@ Server secret value.
 {{- printf "%s" .Values.opensqs.sqs.serverSecret -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Validate that a server secret is configured.
+Renders to an error message if neither serverSecret nor existingSecret is set.
+*/}}
+{{- define "opensqs.validateSecret" -}}
+{{- if and (not .Values.existingSecret) (not .Values.opensqs.sqs.serverSecret) -}}
+{{- fail "Either opensqs.sqs.serverSecret or existingSecret must be set. Refusing to install with an empty server secret (receipt forgery risk)." -}}
+{{- end -}}
+{{- end }}

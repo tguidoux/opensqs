@@ -1,3 +1,7 @@
+// OpenSQS UI JavaScript — wrapped in IIFE to avoid polluting global scope
+(function() {
+'use strict';
+
 // Theme toggle
 (function() {
     const saved = localStorage.getItem('opensqs-theme');
@@ -35,6 +39,26 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
+// Escape for use in JavaScript string literals (e.g., confirm() dialogs)
+function escapeJsString(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+}
+
+// Build a confirm-on-submit handler for a form element
+function attachConfirmOnSubmit(form, message) {
+    form.addEventListener('submit', function(e) {
+        if (!confirm(message)) {
+            e.preventDefault();
+        }
+    });
+}
+
 function updateRefreshUI() {
     const state = refreshStates[refreshStateIdx];
     const label = document.querySelector('.refresh-label');
@@ -57,7 +81,7 @@ function doRefresh() {
 
     if (queueTable) {
         fetch('/api/queues')
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(queues => {
                 const tbody = queueTable.querySelector('tbody');
                 if (!tbody) return;
@@ -67,22 +91,28 @@ function doRefresh() {
                     tr.setAttribute('data-queue', q.Name);
                     const safeName = escapeHtml(q.Name);
                     const safeURL = escapeHtml(q.URL);
+                    const encodedName = encodeURIComponent(q.Name);
                     tr.innerHTML = `
-                        <td data-label="Name"><a href="/queues/${encodeURIComponent(q.Name)}">${safeName}</a></td>
+                        <td data-label="Name"><a href="/queues/${encodedName}">${safeName}</a></td>
                         <td data-label="Type">${q.IsFifo ? '<span class="badge badge-fifo">FIFO</span>' : '<span class="badge badge-standard">Standard</span>'}</td>
                         <td data-label="Available" class="num">${q.Available}</td>
                         <td data-label="In-Flight" class="num">${q.InFlight}</td>
                         <td data-label="Delayed" class="num">${q.Delayed}</td>
                         <td data-label="URL" class="url-cell">${safeURL}</td>
                         <td data-label="Actions" class="action-cell">
-                            <form method="POST" action="/queues/${encodeURIComponent(q.Name)}/purge" style="display:inline" onsubmit="return confirm('Purge all messages from ${safeName}?')">
+                            <form method="POST" action="/queues/${encodedName}/purge" style="display:inline">
                                 <button type="submit" class="btn btn-sm btn-warning">Purge</button>
                             </form>
-                            <form method="POST" action="/queues/${encodeURIComponent(q.Name)}/delete" style="display:inline" onsubmit="return confirm('Delete queue ${safeName}? This cannot be undone.')">
+                            <form method="POST" action="/queues/${encodedName}/delete" style="display:inline">
                                 <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                             </form>
                         </td>
                     `;
+                    // Attach confirm dialogs safely (no inline JS)
+                    const purgeForm = tr.querySelector('form[action$="/purge"]');
+                    if (purgeForm) attachConfirmOnSubmit(purgeForm, 'Purge all messages from ' + q.Name + '?');
+                    const deleteForm = tr.querySelector('form[action$="/delete"]');
+                    if (deleteForm) attachConfirmOnSubmit(deleteForm, 'Delete queue ' + q.Name + '? This cannot be undone.');
                     tbody.appendChild(tr);
                 });
             })
@@ -92,7 +122,7 @@ function doRefresh() {
     if (messageTable) {
         const queueName = window.location.pathname.split('/').pop();
         fetch(`/api/queues/${encodeURIComponent(queueName)}/messages`)
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(msgs => {
                 const tbody = messageTable.querySelector('tbody');
                 if (!tbody) return;
@@ -101,17 +131,21 @@ function doRefresh() {
                     const tr = document.createElement('tr');
                     const safeMsgID = escapeHtml(m.MessageID);
                     const safeBody = escapeHtml(m.Body);
+                    const encodedQueue = encodeURIComponent(queueName);
+                    const encodedReceipt = encodeURIComponent(m.ReceiptHandle);
                     tr.innerHTML = `
                         <td data-label="Message ID" class="mono">${safeMsgID}</td>
                         <td data-label="Body" class="body-cell">${safeBody}</td>
                         <td data-label="Receive Count" class="num">${m.ReceiveCount}</td>
                         <td data-label="Sent">${escapeHtml(m.SentTimestamp)}</td>
                         <td data-label="Actions">
-                            <form method="POST" action="/queues/${encodeURIComponent(queueName)}/messages/${encodeURIComponent(m.ReceiptHandle)}/delete" style="display:inline" onsubmit="return confirm('Delete this message?')">
+                            <form method="POST" action="/queues/${encodedQueue}/messages/${encodedReceipt}/delete" style="display:inline">
                                 <button type="submit" class="btn btn-sm btn-danger">Delete</button>
                             </form>
                         </td>
                     `;
+                    const deleteForm = tr.querySelector('form');
+                    if (deleteForm) attachConfirmOnSubmit(deleteForm, 'Delete this message?');
                     tbody.appendChild(tr);
                 });
             })
@@ -120,7 +154,7 @@ function doRefresh() {
 
     if (metricsDashboard) {
         fetch('/api/metrics')
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(data => {
                 refreshMetricsTable('api-requests-table', data.APIRequests, (item) => `
                     <td>${escapeHtml(item.Action)}</td>
@@ -189,4 +223,9 @@ document.getElementById('refresh-toggle')?.addEventListener('click', function() 
 });
 
 updateRefreshUI();
-startRefresh();
+// Only auto-start refresh on pages with dynamic content (queue/message tables).
+if (document.getElementById('queue-table') || document.getElementById('message-table')) {
+    startRefresh();
+}
+
+})(); // end IIFE

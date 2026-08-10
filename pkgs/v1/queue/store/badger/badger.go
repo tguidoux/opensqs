@@ -1,3 +1,5 @@
+// Package badger provides a BadgerDB-backed Store implementation for OpenSQS queues,
+// using dgraph-io/badger/v4 with iterator-based scanning and lazy visibility timeout evaluation.
 package badger
 
 import (
@@ -89,7 +91,16 @@ type storedMessage struct {
 // NewBadgerStore creates a new BadgerDB-backed message store.
 // The db parameter should be an already-open *BadgerDB connection.
 // Each queue uses a key prefix to isolate its data.
+// The queue name is validated to prevent prefix collisions.
 func NewBadgerStore(db *BadgerDB, queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (*BadgerStore, error) {
+	// Validate queue name to prevent key prefix collisions
+	// (e.g., a queue named "q:foo" would collide with prefix "q:q:foo:")
+	for _, c := range queueName {
+		if c == ':' {
+			return nil, fmt.Errorf("invalid queue name %q: contains ':'", queueName)
+		}
+	}
+
 	s := &BadgerStore{
 		db:                        db.db,
 		queueName:                 queueName,
@@ -235,12 +246,22 @@ func (s *BadgerStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 
 				// Skip messages not yet visible
 				if sm.VisibleAt > nowMilli {
+					// FIFO: if this message is in-flight (has receipt handle and visible in future),
+					// mark its group as in-flight so we skip other messages in the same group
+					if s.isFifo && sm.GroupID != "" && sm.ReceiptHandle != "" {
+						inFlightGroups[sm.GroupID] = true
+					}
 					continue
 				}
 
 				// FIFO: skip if this group already has an in-flight message
 				if s.isFifo && sm.GroupID != "" {
 					if inFlightGroups[sm.GroupID] {
+						continue
+					}
+					// Check if this message is already in-flight (shouldn't be visible, but check anyway)
+					if sm.ReceiptHandle != "" {
+						inFlightGroups[sm.GroupID] = true
 						continue
 					}
 					inFlightGroups[sm.GroupID] = true
@@ -417,6 +438,7 @@ func (s *BadgerStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 }
 
 // ChangeMessageVisibility updates the visibility timeout of a message.
+// Uses a single Update transaction to avoid TOCTOU race between find and update.
 func (s *BadgerStore) ChangeMessageVisibility(ctx context.Context, receiptHandle string, visibilityTimeout int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -427,10 +449,8 @@ func (s *BadgerStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 
 	now := store.Now()
 	found := false
-	var keyToUpdate []byte
-	var sm storedMessage
 
-	err := s.db.View(func(txn *badger.Txn) error {
+	err := s.db.Update(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = s.keyPrefix
 		it := txn.NewIterator(opts)
@@ -438,49 +458,44 @@ func (s *BadgerStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 
 		for it.Seek(s.keyPrefix); it.ValidForPrefix(s.keyPrefix); it.Next() {
 			item := it.Item()
-			var msg storedMessage
+			var sm storedMessage
 			err := item.Value(func(val []byte) error {
-				return json.Unmarshal(val, &msg)
+				return json.Unmarshal(val, &sm)
 			})
 			if err != nil {
 				continue
 			}
 
-			if msg.ReceiptHandle == receiptHandle {
+			if sm.ReceiptHandle == receiptHandle {
 				found = true
-				keyToUpdate = append([]byte{}, item.Key()...)
-				sm = msg
-				return nil
+				if visibilityTimeout == 0 {
+					// Immediately make visible
+					sm.VisibleAt = now.UnixMilli()
+					sm.ReceiptHandle = ""
+				} else {
+					newVisibleAt := now.Add(time.Duration(visibilityTimeout) * time.Second)
+					sm.VisibleAt = newVisibleAt.UnixMilli()
+				}
+
+				data, err := json.Marshal(sm)
+				if err != nil {
+					return fmt.Errorf("failed to marshal message: %w", err)
+				}
+				return txn.Set(item.KeyCopy(nil), data)
 			}
 		}
 		return nil
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to find message: %w", err)
+		return fmt.Errorf("failed to change message visibility: %w", err)
 	}
 
 	if !found {
 		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid", receiptHandle))
 	}
 
-	if visibilityTimeout == 0 {
-		// Immediately make visible
-		sm.VisibleAt = now.UnixMilli()
-		sm.ReceiptHandle = ""
-	} else {
-		newVisibleAt := now.Add(time.Duration(visibilityTimeout) * time.Second)
-		sm.VisibleAt = newVisibleAt.UnixMilli()
-	}
-
-	data, err := json.Marshal(sm)
-	if err != nil {
-		return fmt.Errorf("failed to marshal message: %w", err)
-	}
-
-	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(keyToUpdate, data)
-	})
+	return nil
 }
 
 // ApproximateNumberOfMessages returns the count of visible messages.
@@ -491,7 +506,7 @@ func (s *BadgerStore) ApproximateNumberOfMessages() int {
 	nowMilli := store.Now().UnixMilli()
 	count := 0
 
-	s.db.View(func(txn *badger.Txn) error {
+	if err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = s.keyPrefix
 		it := txn.NewIterator(opts)
@@ -511,7 +526,9 @@ func (s *BadgerStore) ApproximateNumberOfMessages() int {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return 0
+	}
 
 	return count
 }
@@ -524,7 +541,7 @@ func (s *BadgerStore) ApproximateNumberOfMessagesNotVisible() int {
 	nowMilli := store.Now().UnixMilli()
 	count := 0
 
-	s.db.View(func(txn *badger.Txn) error {
+	if err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = s.keyPrefix
 		it := txn.NewIterator(opts)
@@ -544,7 +561,9 @@ func (s *BadgerStore) ApproximateNumberOfMessagesNotVisible() int {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return 0
+	}
 
 	return count
 }
@@ -557,7 +576,7 @@ func (s *BadgerStore) ApproximateNumberOfMessagesDelayed() int {
 	nowMilli := store.Now().UnixMilli()
 	count := 0
 
-	s.db.View(func(txn *badger.Txn) error {
+	if err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = s.keyPrefix
 		it := txn.NewIterator(opts)
@@ -577,7 +596,9 @@ func (s *BadgerStore) ApproximateNumberOfMessagesDelayed() int {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return 0
+	}
 
 	return count
 }

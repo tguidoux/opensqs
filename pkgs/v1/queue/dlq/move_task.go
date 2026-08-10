@@ -55,6 +55,7 @@ type MoveTask struct {
 	movedMessages                atomic.Int64
 	StartedAt                    time.Time
 	cancelled                    chan struct{}
+	cancelOnce                   sync.Once
 }
 
 // MovedMessages returns the number of messages moved so far.
@@ -167,8 +168,11 @@ func (mtm *MoveTaskManager) CancelTask(taskHandle string) (int, error) {
 
 	// Mark as cancelling and signal the background goroutine.
 	// The goroutine will set the final Cancelled status when it stops.
+	// sync.Once prevents panic on double-cancel.
 	task.Status = MoveTaskStatusCancelling
-	close(task.cancelled)
+	task.cancelOnce.Do(func() {
+		close(task.cancelled)
+	})
 
 	return int(task.movedMessages.Load()), nil
 }

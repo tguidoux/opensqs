@@ -81,6 +81,7 @@ func TestCreateQueuePOST(t *testing.T) {
 	form := "queueName=my-new-queue"
 	req := httptest.NewRequest(http.MethodPost, "/queues/create", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://example.com")
 	w := httptest.NewRecorder()
 
 	srv.Handler().ServeHTTP(w, req)
@@ -94,6 +95,7 @@ func TestCreateFifoQueuePOST(t *testing.T) {
 	form := "queueName=my-fifo-queue.fifo&fifoQueue=on"
 	req := httptest.NewRequest(http.MethodPost, "/queues/create", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://example.com")
 	w := httptest.NewRecorder()
 
 	srv.Handler().ServeHTTP(w, req)
@@ -107,6 +109,7 @@ func TestCreateFifoQueueMissingSuffix(t *testing.T) {
 	form := "queueName=bad-fifo&fifoQueue=on"
 	req := httptest.NewRequest(http.MethodPost, "/queues/create", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://example.com")
 	w := httptest.NewRecorder()
 
 	srv.Handler().ServeHTTP(w, req)
@@ -154,6 +157,7 @@ func TestDeleteQueuePOST(t *testing.T) {
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodPost, "/queues/to-delete/delete", nil)
+	req.Header.Set("Origin", "http://example.com")
 	w := httptest.NewRecorder()
 
 	srv.Handler().ServeHTTP(w, req)
@@ -175,6 +179,7 @@ func TestPurgeQueuePOST(t *testing.T) {
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodPost, "/queues/to-purge/purge", nil)
+	req.Header.Set("Origin", "http://example.com")
 	w := httptest.NewRecorder()
 
 	srv.Handler().ServeHTTP(w, req)

@@ -130,24 +130,32 @@ func BenchmarkConcurrentSendReceive(b *testing.B) {
 	defer s.Close()
 
 	ctx := context.Background()
+
+	// Pre-populate with b.N messages so the receiver always has work.
+	for i := 0; i < b.N; i++ {
+		if err := s.SendMessage(ctx, newBenchMsg(i), 0); err != nil {
+			b.Fatal(err)
+		}
+	}
+
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Sender goroutine
+	// Sender goroutine — sends b.N additional messages
 	go func() {
 		defer wg.Done()
 		for i := 0; i < b.N; i++ {
-			if err := s.SendMessage(ctx, newBenchMsg(i), 0); err != nil {
+			if err := s.SendMessage(ctx, newBenchMsg(i+b.N), 0); err != nil {
 				b.Error(err)
 				return
 			}
 		}
 	}()
 
-	// Receiver goroutine
+	// Receiver goroutine — receives and deletes b.N messages
 	go func() {
 		defer wg.Done()
 		for i := 0; i < b.N; i++ {

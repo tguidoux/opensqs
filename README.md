@@ -1,5 +1,9 @@
 # OpenSQS
 
+[![Go Version](https://img.shields.io/badge/Go-1.25.5-00ADD8?logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/tguidoux/opensqs/pulls)
+
 **An open-source, self-hosted alternative to AWS SQS.** Built in Go, compatible with the AWS SQS API, and designed to be lightweight, fast, and easy to run anywhere.
 
 ## Why OpenSQS?
@@ -79,6 +83,20 @@ aws sqs list-queues
 bazel run //apps/go/server:opensqs_server_image_platform_transition_load_docker
 docker run -p 9324:9324 opensqs_server_image
 ```
+
+### Deploy with Helm
+
+```bash
+# Add the OpenSQS Helm chart
+helm install opensqs deploy/helm \
+  --set image.tag=v0.0.7 \
+  --set sqs.serverSecret="your-secret-key"
+
+# Or use a values file
+helm install opensqs deploy/helm -f my-values.yaml
+```
+
+See [`deploy/helm/values.yaml`](deploy/helm/values.yaml) for all configurable options.
 
 ## Example Program
 
@@ -243,6 +261,27 @@ bazel test //apps/go/server/handlers/tests:go_default_test
 
 OpenSQS uses **Bazel** with custom `opensqs_go_*` rules for hermetic, reproducible builds. All toolchains, dependencies, and formatters are managed through Bazel — no "works on my machine" problems.
 
+## Contributing
+
+Contributions are welcome! Here's how to get started:
+
+1. **Fork** the repository
+2. **Clone** your fork: `git clone https://github.com/<your-username>/opensqs.git`
+3. **Create** a feature branch: `git checkout -b my-feature`
+4. **Make** your changes, following the existing code style and patterns
+5. **Test** your changes: `bazel test //...`
+6. **Commit** with a clear message
+7. **Push** and open a Pull Request
+
+### Guidelines
+
+- Follow the existing Bazel build patterns (`opensqs_go_*` rules)
+- Add tests in `tests/` subfolders within each package
+- Run `bazel run //:gazelle` after adding new Go files or dependencies
+- Run `bazel run //:clean` before committing to ensure a clean workspace
+- Keep functions small and focused on a single responsibility
+- Write self-documenting code with clear names
+
 ## License
 
-This project is open-source. See the repository for license details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for the full license text.

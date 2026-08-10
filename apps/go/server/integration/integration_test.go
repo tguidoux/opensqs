@@ -489,10 +489,8 @@ func TestIntegration_ReceiveFromNonExistentQueue(t *testing.T) {
 		"WaitTimeSeconds", "0",
 	)
 	require.NoError(t, err)
-	// With autoCreate, this might create the queue and return empty,
-	// or it might error depending on the implementation
-	_ = resp
-	_ = body
+	// With autoCreate, the queue is created and ReceiveMessage returns an empty response.
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "expected 200 OK, got body: %s", body)
 }
 
 // TestIntegration_MultipleQueuesIsolation tests that messages in different queues don't mix.

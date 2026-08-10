@@ -621,6 +621,14 @@ func TestMarshalResponse_ErrorResponse(t *testing.T) {
 
 	_, err := h.HandleRequest(context.Background(), req, handlers.QueryProtocol)
 	assert.Error(t, err)
+
+	// Verify the error implements the SQS error interface
+	sqsErr, ok := err.(*types.ConcreteSQSError)
+	if ok {
+		assert.NotEmpty(t, sqsErr.Code(), "error should have a non-empty code")
+		assert.NotEmpty(t, sqsErr.Message(), "error should have a non-empty message")
+		assert.Greater(t, sqsErr.HTTPStatusCode(), 0, "error should have a valid HTTP status code")
+	}
 }
 
 // ---------------------------------------------------------------------------

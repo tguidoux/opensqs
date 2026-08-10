@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -222,13 +223,19 @@ func parseBatchEntries(values url.Values) []QueryBatchEntry {
 		}
 	}
 
-	// Convert map to sorted slice
+	// Convert map to sorted slice (handles non-contiguous indices)
 	if len(entries) == 0 {
 		return nil
 	}
 
+	indices := make([]int, 0, len(entries))
+	for i := range entries {
+		indices = append(indices, i)
+	}
+	sort.Ints(indices)
+
 	result := make([]QueryBatchEntry, 0, len(entries))
-	for i := 1; i <= len(entries); i++ {
+	for _, i := range indices {
 		if entry, ok := entries[i]; ok {
 			result = append(result, *entry)
 		}

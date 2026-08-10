@@ -283,7 +283,12 @@ func (h *handler) handleQueueRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queueName := parts[0]
+	// URL-decode the queue name (may contain encoded characters)
+	queueName, err := url.PathUnescape(parts[0])
+	if err != nil {
+		http.Error(w, "Invalid queue name encoding", http.StatusBadRequest)
+		return
+	}
 
 	// POST /queues/{name}/delete
 	if len(parts) == 2 && parts[1] == "delete" && r.Method == http.MethodPost {
@@ -305,7 +310,12 @@ func (h *handler) handleQueueRoutes(w http.ResponseWriter, r *http.Request) {
 
 	// POST /queues/{name}/messages/{receiptHandle}/delete
 	if len(parts) == 4 && parts[1] == "messages" && parts[3] == "delete" && r.Method == http.MethodPost {
-		h.handleDeleteMessage(w, r, queueName, parts[2])
+		receiptHandle, err := url.PathUnescape(parts[2])
+		if err != nil {
+			http.Error(w, "Invalid receipt handle encoding", http.StatusBadRequest)
+			return
+		}
+		h.handleDeleteMessage(w, r, queueName, receiptHandle)
 		return
 	}
 
@@ -333,10 +343,13 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 	attrs := q.Attributes()
 	arn := q.ARN(h.manager.Region(), h.manager.AccountID())
 
-	attrPairs := buildAttrPairs(attrs, q)
+	attrPairs := buildAttrPairs(attrs)
 
 	// Receive messages for display (non-destructive peek via short visibility timeout)
-	msgs, _ := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
+	msgs, err := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
+	if err != nil {
+		h.log.Errorf("failed to receive messages for queue %q: %v", queueName, err)
+	}
 	msgDisplays := make([]messageDisplay, 0, len(msgs))
 	for _, m := range msgs {
 		msgDisplays = append(msgDisplays, messageDisplay{
@@ -376,6 +389,10 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 
 // handleDeleteQueue deletes a queue and redirects to the list.
 func (h *handler) handleDeleteQueue(w http.ResponseWriter, r *http.Request, queueName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if err := h.manager.DeleteQueue(queueName); err != nil {
 		h.log.Errorf("failed to delete queue %q: %v", queueName, err)
 		http.Redirect(w, r, "/?error="+url.QueryEscape(fmt.Sprintf("Failed to delete queue %s", queueName)), http.StatusSeeOther)
@@ -387,6 +404,10 @@ func (h *handler) handleDeleteQueue(w http.ResponseWriter, r *http.Request, queu
 
 // handlePurgeQueue purges all messages from a queue.
 func (h *handler) handlePurgeQueue(w http.ResponseWriter, r *http.Request, queueName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	q, err := h.manager.LookupQueue(queueName)
 	if err != nil {
 		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Queue+not+found", http.StatusSeeOther)
@@ -403,6 +424,10 @@ func (h *handler) handlePurgeQueue(w http.ResponseWriter, r *http.Request, queue
 
 // handleSendMessage sends a message to a queue from form data.
 func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queueName string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/queues/"+queueName+"?error=Invalid+form+data", http.StatusSeeOther)
 		return
@@ -432,9 +457,12 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 
 	delaySeconds := 0
 	if d := r.FormValue("delaySeconds"); d != "" {
-		if v, err := strconv.Atoi(d); err == nil {
-			delaySeconds = v
+		v, err := strconv.Atoi(d)
+		if err != nil || v < 0 || v > types.MaxDelaySeconds {
+			http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Invalid+delay+seconds", http.StatusSeeOther)
+			return
 		}
+		delaySeconds = v
 	}
 
 	if err := q.Store().SendMessage(r.Context(), msg, delaySeconds); err != nil {
@@ -503,7 +531,10 @@ func (h *handler) handleAPIQueueMessages(w http.ResponseWriter, r *http.Request)
 
 	// If sub-path is "messages", return message list
 	if len(parts) == 2 && parts[1] == "messages" {
-		msgs, _ := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
+		msgs, err := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
+		if err != nil {
+			h.log.Errorf("failed to receive messages for queue %q: %v", queueName, err)
+		}
 		displays := make([]messageDisplay, 0, len(msgs))
 		for _, m := range msgs {
 			displays = append(displays, messageDisplay{
@@ -570,7 +601,7 @@ func writeJSONError(w http.ResponseWriter, msg string, code int) {
 }
 
 // buildAttrPairs converts QueueAttributes into a sorted list of name-value pairs for display.
-func buildAttrPairs(attrs *queue.QueueAttributes, q *queue.Queue) []attrPair {
+func buildAttrPairs(attrs *queue.QueueAttributes) []attrPair {
 	pairs := []attrPair{
 		{"VisibilityTimeout", strconv.Itoa(attrs.VisibilityTimeout)},
 		{"MaximumMessageSize", strconv.Itoa(attrs.MaximumMessageSize)},

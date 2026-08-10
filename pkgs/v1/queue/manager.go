@@ -54,7 +54,7 @@ func (qm *QueueManager) CreateQueue(name string, attrs *QueueAttributes) (*Queue
 	}
 
 	// Set the queue ARN
-	attrs.QueueArn = fmt.Sprintf("arn:aws:sqs:%s:%s:%s", qm.region, qm.accountID, name)
+	attrs.QueueArn = buildQueueARN(qm.region, qm.accountID, name)
 
 	// Parse RedrivePolicy to configure dead-letter queue settings
 	storeCfg := store.StoreConfig{
@@ -100,8 +100,6 @@ func (qm *QueueManager) DeleteQueue(name string) error {
 	}
 
 	if err := q.Store().Close(); err != nil {
-		// Log the error but still remove the queue from the map
-		// to avoid leaking entries on shutdown
 		delete(qm.queues, name)
 		return fmt.Errorf("failed to close store for queue %q: %w", name, err)
 	}
@@ -126,7 +124,7 @@ func (qm *QueueManager) LookupQueue(name string) (*Queue, error) {
 
 // LookupQueueByURL extracts the queue name from a URL and looks it up.
 func (qm *QueueManager) LookupQueueByURL(queueURL string) (*Queue, error) {
-	name := extractQueueNameFromURL(queueURL)
+	name := ExtractQueueNameFromURL(queueURL)
 	if name == "" {
 		return nil, NewInvalidParameterValue(fmt.Sprintf("Invalid queue URL: %s", queueURL))
 	}
@@ -169,7 +167,11 @@ func (qm *QueueManager) PurgeQueue(ctx context.Context, name string) error {
 
 // QueueURL returns the URL for a queue name.
 func (qm *QueueManager) QueueURL(name string) string {
-	return fmt.Sprintf("http://%s/%s/%s", qm.nodeAddress, qm.accountID, name)
+	q, err := qm.LookupQueue(name)
+	if err != nil {
+		return fmt.Sprintf("http://%s/%s/%s", qm.nodeAddress, qm.accountID, name)
+	}
+	return q.URL(qm.nodeAddress, qm.accountID)
 }
 
 // NodeAddress returns the configured node address.
@@ -221,12 +223,20 @@ func (qm *QueueManager) Region() string {
 // Shutdown gracefully shuts down all queues by closing their stores.
 // It should be called after the HTTP server has stopped accepting new requests.
 // The context allows callers to set a deadline for the shutdown.
+// The write lock is released during Close() calls to avoid blocking for slow stores.
 func (qm *QueueManager) Shutdown(ctx context.Context) error {
+	// Snapshot the queues under the lock, then release it so Close() calls
+	// don't block other operations and respect the context deadline.
 	qm.mu.Lock()
-	defer qm.mu.Unlock()
+	queues := make(map[string]*Queue, len(qm.queues))
+	for name, q := range qm.queues {
+		queues[name] = q
+	}
+	qm.queues = make(map[string]*Queue)
+	qm.mu.Unlock()
 
 	var lastErr error
-	for name, q := range qm.queues {
+	for name, q := range queues {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("shutdown interrupted: %w (last error: %v)", err, lastErr)
 		}
@@ -239,22 +249,29 @@ func (qm *QueueManager) Shutdown(ctx context.Context) error {
 }
 
 // attributesMatch checks if two QueueAttributes are equivalent for create-if-exists semantics.
+// Compares all user-settable attributes using their string representations to ensure
+// thread-safe reads without holding the mutex.
 func attributesMatch(a, b *QueueAttributes) bool {
-	return a.VisibilityTimeout == b.VisibilityTimeout &&
-		a.DelaySeconds == b.DelaySeconds &&
-		a.MaximumMessageSize == b.MaximumMessageSize &&
-		a.MessageRetentionPeriod == b.MessageRetentionPeriod &&
-		a.ReceiveMessageWaitTimeSeconds == b.ReceiveMessageWaitTimeSeconds &&
-		a.FifoQueue == b.FifoQueue &&
-		a.ContentBasedDeduplication == b.ContentBasedDeduplication &&
-		a.RedrivePolicy == b.RedrivePolicy &&
-		a.KmsMasterKeyId == b.KmsMasterKeyId &&
-		a.SqsManagedSseEnabled == b.SqsManagedSseEnabled
+	aAttrs := a.AllAttributes()
+	bAttrs := b.AllAttributes()
+	// QueueArn is server-assigned, not client-provided, so exclude it from comparison
+	delete(aAttrs, types.AttributeQueueArn)
+	delete(bAttrs, types.AttributeQueueArn)
+	if len(aAttrs) != len(bAttrs) {
+		return false
+	}
+	for k, v := range aAttrs {
+		if bv, ok := bAttrs[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }
 
-// extractQueueNameFromURL extracts the queue name from a queue URL.
+// ExtractQueueNameFromURL extracts the queue name from a queue URL.
 // URLs are in the format: http://host/accountId/queueName
-func extractQueueNameFromURL(queueURL string) string {
+// It strips query strings and trailing slashes, then returns the last path segment.
+func ExtractQueueNameFromURL(queueURL string) string {
 	if queueURL == "" {
 		return ""
 	}
@@ -271,4 +288,10 @@ func extractQueueNameFromURL(queueURL string) string {
 		}
 	}
 	return queueURL
+}
+
+// buildQueueARN constructs an ARN for a queue.
+// Format: arn:aws:sqs:<region>:<accountId>:<queueName>
+func buildQueueARN(region, accountID, name string) string {
+	return fmt.Sprintf("arn:aws:sqs:%s:%s:%s", region, accountID, name)
 }

@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,8 +41,19 @@ func main() {
 	}
 	cfg := config.NewConfigFromEnv[ServerConfig]().Config
 
-	// Initialize logger
-	log := logger.New("opensqs-server", logger.UncontextualLoggerType)
+	// Initialize logger with configured level
+	var logLevel slog.Level
+	switch strings.ToLower(cfg.Log.Level) {
+	case "debug":
+		logLevel = slog.LevelDebug
+	case "warn", "warning":
+		logLevel = slog.LevelWarn
+	case "error":
+		logLevel = slog.LevelError
+	default:
+		logLevel = slog.LevelInfo
+	}
+	log := logger.New("opensqs-server", logger.UncontextualLoggerType, logLevel)
 
 	log.Infof("starting OpenSQS server", map[string]interface{}{
 		"host":         cfg.Server.Host,
@@ -71,6 +84,7 @@ func main() {
 		}
 		// Enable WAL mode for better concurrent read performance
 		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			db.Close()
 			log.Fatalf("failed to set SQLite WAL mode: %v", err)
 		}
 		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
@@ -244,6 +258,7 @@ func main() {
 	}
 
 	// Start HTTP server in goroutine
+	serverErr := make(chan error, 1)
 	go func() {
 		log.Infof("starting SQS server on %s:%d", cfg.Server.Host, cfg.Server.Port)
 		var err error
@@ -254,14 +269,18 @@ func main() {
 		}
 		if err != nil && err != http.ErrServerClosed {
 			log.Errorf("server failed to start: %v", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	select {
+	case <-quit:
+	case err := <-serverErr:
+		log.Errorf("server error: %v", err)
+	}
 
 	log.Info("shutting down server...")
 

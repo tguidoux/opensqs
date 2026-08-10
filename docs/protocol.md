@@ -8,29 +8,29 @@ OpenSQS supports two AWS SQS wire protocols simultaneously. The server auto-dete
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    HTTP Request                          │
-│                                                          │
-│  Query Protocol:          JSON Protocol:                │
+│                    HTTP Request                         │
+│                                                         │
+│  Query Protocol:          JSON Protocol:               │
 │  Content-Type:            X-Amz-Target: AmazonSQS.X    │
-│  application/              Content-Type:                │
-│  x-www-form-urlencoded     application/x-amz-json-1.0   │
-└──────────────┬──────────────────────┬───────────────────┘
+│  application/              Content-Type:               │
+│  x-www-form-urlencoded     application/x-amz-json-1.0  │
+└──────────────┬──────────────────────┬──────────────────┘
                │                      │
-       ┌───────▼────────┐   ┌────────▼─────────┐
-       │ DetectProtocol()│   │                  │
-       │ → QueryProtocol │   │ → JSONProtocol   │
-       └───────┬────────┘   └────────┬─────────┘
+       ┌───────▼────────┐   ┌────────▼────────┐
+       │ DetectProtocol()│   │                 │
+       │ → QueryProtocol │   │ → JSONProtocol  │
+       └───────┬────────┘   └────────┬────────┘
                │                      │
-       ┌───────▼────────┐   ┌────────▼─────────┐
-       │ ParseQueryReq() │   │ ParseJSONRequest()│
-       │ → QueryRequest  │   │ → JSONRequest    │
-       └───────┬────────┘   └────────┬─────────┘
+       ┌───────▼────────┐   ┌────────▼────────┐
+       │ ParseQueryReq()│   │ParseJSONRequest()│
+       │ → QueryRequest │   │ → JSONRequest   │
+       └───────┬────────┘   └────────┬────────┘
                │                      │
-       ┌───────▼────────┐   ┌────────▼─────────┐
-       │QueryRequestAdpt│   │JSONRequestAdapter│
-       │  implements    │   │  implements      │
-       │  Request iface │   │  Request iface   │
-       └───────┬────────┘   └────────┬─────────┘
+       ┌───────▼────────┐   ┌────────▼────────┐
+       │QueryRequestAdpt│   │JSONRequestAdapt │
+       │  implements    │   │  implements     │
+       │  Request iface │   │  Request iface  │
+       └───────┬────────┘   └────────┬────────┘
                │                      │
                └──────────┬───────────┘
                           │

@@ -1,3 +1,5 @@
+// Package store defines the Store interface for pluggable message storage
+// backends. Implementations include in-memory, SQLite, and BadgerDB stores.
 package store
 
 import (
@@ -11,16 +13,20 @@ import (
 // Store defines the interface for a message store backend.
 type Store interface {
 	// SendMessage adds a message to the queue with an optional delay.
+	// Returns an error if the message could not be stored (e.g. database failure).
 	SendMessage(ctx context.Context, msg *types.Message, delaySeconds int) error
 
 	// ReceiveMessages retrieves up to maxMessages visible messages from the queue.
 	// It blocks for up to waitTimeSeconds if no messages are available (long polling).
+	// Returns an error if the store is closed or the context is cancelled.
 	ReceiveMessages(ctx context.Context, maxMessages int, visibilityTimeout int, waitTimeSeconds int) ([]*types.Message, error)
 
 	// DeleteMessage removes a message from the queue by its receipt handle.
+	// Returns an error if the receipt handle is invalid or the store fails.
 	DeleteMessage(ctx context.Context, receiptHandle string) error
 
 	// ChangeMessageVisibility updates the visibility timeout of a message.
+	// Returns an error if the receipt handle is invalid or the store fails.
 	ChangeMessageVisibility(ctx context.Context, receiptHandle string, visibilityTimeout int) error
 
 	// ApproximateNumberOfMessages returns the approximate number of messages available.
@@ -33,9 +39,11 @@ type Store interface {
 	ApproximateNumberOfMessagesDelayed() int
 
 	// Purge removes all messages from the queue.
+	// Returns an error if the store fails to purge messages.
 	Purge(ctx context.Context) error
 
 	// Close releases any resources held by the store.
+	// Returns an error if cleanup fails (e.g. database close error).
 	Close() error
 }
 

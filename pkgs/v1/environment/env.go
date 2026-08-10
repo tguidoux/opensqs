@@ -1,3 +1,5 @@
+// Package env defines the Environment type used across OpenSQS services
+// to distinguish between LOCAL, STAGING, PROD, and AOOSTAR deployments.
 package env
 
 type Environment string

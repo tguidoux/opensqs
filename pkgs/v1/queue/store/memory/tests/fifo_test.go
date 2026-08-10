@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -38,10 +39,10 @@ func TestFIFO_MessageGroupOrdering(t *testing.T) {
 	// Send 3 messages in the same group
 	for i := 0; i < 3; i++ {
 		msg := &types.Message{
-			MessageID:              "msg-" + string(rune('0'+i)),
-			Body:                   "body-" + string(rune('0'+i)),
+			MessageID:              "msg-" + strconv.Itoa(i),
+			Body:                   "body-" + strconv.Itoa(i),
 			MessageGroupID:         "groupA",
-			MessageDeduplicationID: "dedup-" + string(rune('0'+i)),
+			MessageDeduplicationID: "dedup-" + strconv.Itoa(i),
 		}
 		err := s.SendMessage(context.Background(), msg, 0)
 		require.NoError(t, err)

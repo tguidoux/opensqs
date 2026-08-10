@@ -2,6 +2,7 @@ package badger_test
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -160,7 +161,7 @@ func TestBadgerPurge(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.Message{
-			MessageID: "msg-" + string(rune('0'+i)),
+			MessageID: "msg-" + strconv.Itoa(i),
 			Body:      "hello",
 		}
 		err := s.SendMessage(context.Background(), msg, 0)
@@ -190,7 +191,7 @@ func TestBadgerReceiveMultiple(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.Message{
-			MessageID: "msg-" + string(rune('0'+i)),
+			MessageID: "msg-" + strconv.Itoa(i),
 			Body:      "hello",
 		}
 		err := s.SendMessage(context.Background(), msg, 0)
@@ -243,7 +244,7 @@ func TestBadgerConcurrentSendReceive(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			msg := &types.Message{
-				MessageID: "msg-" + string(rune('0'+n)),
+				MessageID: "msg-" + strconv.Itoa(n),
 				Body:      "hello",
 			}
 			_ = s.SendMessage(context.Background(), msg, 0)

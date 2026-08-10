@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -28,7 +29,7 @@ func newTestDB(t *testing.T) (*sql.DB, func()) {
 }
 
 func generateID() string {
-	return string(rune(time.Now().UnixNano()))
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
 func newTestStore(t *testing.T) (*sqlite.SQLiteStore, func()) {
@@ -141,7 +142,7 @@ func TestSQLite_ReceiveMultipleMessages(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.Message{
-			MessageID: "msg-" + string(rune('0'+i)),
+			MessageID: "msg-" + strconv.Itoa(i),
 			Body:      "body",
 		}
 		require.NoError(t, s.SendMessage(context.Background(), msg, 0))
@@ -219,7 +220,7 @@ func TestSQLite_Purge(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := &types.Message{
-			MessageID: "msg-" + string(rune('0'+i)),
+			MessageID: "msg-" + strconv.Itoa(i),
 			Body:      "body",
 		}
 		require.NoError(t, s.SendMessage(context.Background(), msg, 0))
@@ -287,7 +288,7 @@ func TestSQLite_ConcurrentAccess(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			msg := &types.Message{
-				MessageID: "msg-" + string(rune('0'+n)),
+				MessageID: "msg-" + strconv.Itoa(n),
 				Body:      "body",
 			}
 			_ = s.SendMessage(context.Background(), msg, 0)

@@ -1,3 +1,5 @@
+// Package sqlite provides a SQLite-backed Store implementation for OpenSQS queues,
+// using modernc.org/sqlite (pure Go) with WAL mode and lazy visibility timeout evaluation.
 package sqlite
 
 import (
@@ -10,6 +12,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +21,10 @@ import (
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 	_ "modernc.org/sqlite"
 )
+
+// validTableNameRe matches only safe characters for SQL identifiers.
+// Queue names must match this pattern to be used as table names.
+var validTableNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.\-]+$`)
 
 // SQLiteStore is a SQLite-backed implementation of the Store interface.
 // It uses lazy visibility timeout evaluation (no goroutines/timers).
@@ -45,6 +53,12 @@ type SQLiteStore struct {
 // The db parameter should be an already-open *sql.DB connection.
 // Each queue uses its own table namespace based on the queue name.
 func NewSQLiteStore(db *sql.DB, queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (*SQLiteStore, error) {
+	// Validate queue name to prevent SQL injection via table name interpolation.
+	// Only alphanumeric, underscore, dot, and hyphen are allowed.
+	if !validTableNameRe.MatchString(queueName) {
+		return nil, fmt.Errorf("invalid queue name for SQLite table: %q", queueName)
+	}
+
 	s := &SQLiteStore{
 		db:                        db,
 		queueName:                 queueName,
@@ -87,21 +101,27 @@ func (s *SQLiteStore) initSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_%s_visible_at ON %s (queue_name, visible_at);
 		CREATE INDEX IF NOT EXISTS idx_%s_receipt_handle ON %s (receipt_handle);
-	`, tableName, tableName, tableName, tableName, tableName))
+		CREATE INDEX IF NOT EXISTS idx_%s_group_id ON %s (message_group_id);
+	`, tableName, tableName, tableName, tableName, tableName, tableName, tableName))
 	return err
 }
 
 // tableName returns the sanitized table name for this queue.
+// The queue name is validated at construction time (NewSQLiteStore),
+// so we only need to replace non-alphanumeric characters (except _)
+// with underscores. This is done rune-by-rune to avoid splitting
+// multi-byte UTF-8 characters.
 func (s *SQLiteStore) tableName() string {
-	// Sanitize queue name for use as a table name
-	name := s.queueName
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
-			name = name[:i] + "_" + name[i+1:]
+	var b strings.Builder
+	b.WriteString("queue_")
+	for _, r := range s.queueName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
 		}
 	}
-	return "queue_" + name
+	return b.String()
 }
 
 // SendMessage adds a message to the queue with an optional delay.
@@ -144,11 +164,17 @@ func (s *SQLiteStore) SendMessage(ctx context.Context, msg *types.Message, delay
 	msg.IsVisible = delaySeconds == 0
 
 	// Serialize message attributes to JSON
-	attrsJSON, _ := json.Marshal(msg.MessageAttributes)
-	sysAttrsJSON, _ := json.Marshal(msg.SystemAttributes)
+	attrsJSON, err := json.Marshal(msg.MessageAttributes)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message attributes: %w", err)
+	}
+	sysAttrsJSON, err := json.Marshal(msg.SystemAttributes)
+	if err != nil {
+		return fmt.Errorf("failed to marshal system attributes: %w", err)
+	}
 
 	tableName := s.tableName()
-	_, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+	_, err = s.db.ExecContext(ctx, fmt.Sprintf(`
 		INSERT INTO %s (id, queue_name, body, md5_of_body, md5_of_message_attributes, message_attributes, system_attributes, sent_timestamp, visible_at, receipt_handle, receive_count, first_received_at, sequence_number, message_dedup_id, message_group_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, tableName),
@@ -191,21 +217,43 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 		// For FIFO: need to handle one in-flight per message group
 		// Note: messages whose visibility timeout expired still have an old receipt_handle,
 		// so we only check visible_at, not receipt_handle.
-		query := fmt.Sprintf(`
-			SELECT id, body, md5_of_body, md5_of_message_attributes, message_attributes, system_attributes,
-			       sent_timestamp, receive_count, first_received_at, sequence_number, message_dedup_id, message_group_id
-			FROM %s
-			WHERE visible_at <= ?
-			ORDER BY sent_timestamp ASC
-			LIMIT ?
-		`, tableName)
+		var query string
+		var args []interface{}
+		args = append(args, now.UnixMilli(), maxMessages)
 
-		rows, err := s.db.QueryContext(ctx, query, now.UnixMilli(), maxMessages)
+		if s.isFifo {
+			// Single query with subquery: exclude groups that have in-flight messages
+			query = fmt.Sprintf(`
+				SELECT id, body, md5_of_body, md5_of_message_attributes, message_attributes, system_attributes,
+				       sent_timestamp, receive_count, first_received_at, sequence_number, message_dedup_id, message_group_id
+				FROM %s
+				WHERE visible_at <= ?
+				  AND message_group_id NOT IN (
+				      SELECT message_group_id FROM %s
+				      WHERE receipt_handle != '' AND visible_at > ?
+				  )
+				ORDER BY sent_timestamp ASC
+				LIMIT ?
+			`, tableName, tableName)
+			// Insert the "now" for the subquery before maxMessages
+			args = args[:1] // keep now.UnixMilli()
+			args = append(args, now.UnixMilli(), maxMessages)
+		} else {
+			query = fmt.Sprintf(`
+				SELECT id, body, md5_of_body, md5_of_message_attributes, message_attributes, system_attributes,
+				       sent_timestamp, receive_count, first_received_at, sequence_number, message_dedup_id, message_group_id
+				FROM %s
+				WHERE visible_at <= ?
+				ORDER BY sent_timestamp ASC
+				LIMIT ?
+			`, tableName)
+		}
+
+		rows, err := s.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			s.mu.Unlock()
 			return nil, fmt.Errorf("failed to query messages: %w", err)
 		}
-		defer rows.Close()
 
 		type candidate struct {
 			msg           *types.Message
@@ -213,7 +261,7 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 			firstReceived time.Time
 		}
 		var candidates []candidate
-		// Track which groups are already in-flight (for FIFO)
+		// Track which groups are already selected (for FIFO single-message-per-group)
 		inFlightGroups := make(map[string]bool)
 
 		for rows.Next() {
@@ -230,18 +278,9 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 				return nil, fmt.Errorf("failed to scan message: %w", err)
 			}
 
-			// FIFO: skip if this group already has an in-flight message
+			// FIFO: skip if this group was already selected in this batch
 			if s.isFifo && groupID != "" {
 				if inFlightGroups[groupID] {
-					continue
-				}
-				// Check if any message in this group is already in-flight (visible_at > now)
-				var inFlight int
-				s.db.QueryRowContext(ctx, fmt.Sprintf(
-					`SELECT COUNT(*) FROM %s WHERE message_group_id = ? AND receipt_handle != '' AND visible_at > ?`, tableName,
-				), groupID, now.UnixMilli()).Scan(&inFlight)
-				if inFlight > 0 {
-					inFlightGroups[groupID] = true
 					continue
 				}
 				inFlightGroups[groupID] = true
@@ -280,6 +319,7 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 				firstReceived: time.UnixMilli(firstReceived),
 			})
 		}
+		rows.Close()
 
 		if len(candidates) == 0 {
 			// No messages available
@@ -634,14 +674,31 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 		idsToDelete = append(idsToDelete, id)
 	}
 
-	// Redrive messages and delete from this queue
+	// Redrive messages and delete from this queue atomically
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	deleteStmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, tableName))
+	if err != nil {
+		return
+	}
+	defer deleteStmt.Close()
+
 	for i, msg := range toRedrive {
 		msg.ReceiptHandle = ""
 		msg.IsVisible = true
 		msg.ApproximateReceiveCount = 0
 		s.redriveFunc(msg)
 
-		// Delete the redrived message
-		s.db.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, tableName), idsToDelete[i])
+		if _, err := deleteStmt.ExecContext(ctx, idsToDelete[i]); err != nil {
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return
 	}
 }

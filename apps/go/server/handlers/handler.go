@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/tguidoux/opensqs/apps/go/server/metrics"
@@ -241,28 +240,6 @@ func (h *Handler) HandleRequest(ctx context.Context, req Request, proto Protocol
 	}
 }
 
-// extractQueueNameFromURL extracts the queue name from a queue URL.
-// URLs are in the format: http://host/accountId/queueName
-// Handles trailing slashes and query strings.
-func extractQueueNameFromURL(queueURL string) string {
-	if queueURL == "" {
-		return ""
-	}
-	// Strip query string
-	if idx := strings.Index(queueURL, "?"); idx >= 0 {
-		queueURL = queueURL[:idx]
-	}
-	// Strip trailing slash
-	queueURL = strings.TrimSuffix(queueURL, "/")
-	// Find the last segment after the last /
-	for i := len(queueURL) - 1; i >= 0; i-- {
-		if queueURL[i] == '/' {
-			return queueURL[i+1:]
-		}
-	}
-	return queueURL
-}
-
 // resolveQueue looks up a queue by URL, returning an error if not found.
 // If autoCreate is enabled and the queue doesn't exist, it creates it with default attributes.
 func (h *Handler) resolveQueue(queueURL string) (*queue.Queue, error) {
@@ -272,7 +249,7 @@ func (h *Handler) resolveQueue(queueURL string) (*queue.Queue, error) {
 	q, err := h.manager.LookupQueueByURL(queueURL)
 	if err != nil {
 		if h.autoCreate {
-			name := extractQueueNameFromURL(queueURL)
+			name := queue.ExtractQueueNameFromURL(queueURL)
 			if name != "" {
 				attrs := queue.NewDefaultQueueAttributes()
 				if q, createErr := h.manager.CreateQueue(name, attrs); createErr == nil {
