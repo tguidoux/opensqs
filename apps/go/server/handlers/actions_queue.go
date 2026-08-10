@@ -142,6 +142,8 @@ func (h *Handler) handleSetQueueAttributes(ctx context.Context, req Request) (*R
 		types.AttributeDeduplicationScope,
 		types.AttributeFifoThroughputLimit,
 	}
+	// Filter out immutable-but-unchanged attributes before batch set
+	settable := make(map[string]string, len(attrs))
 	for name, value := range attrs {
 		// Reject attempts to change immutable attributes to a different value
 		if slices.Contains(immutableAttrs, name) {
@@ -151,11 +153,15 @@ func (h *Handler) handleSetQueueAttributes(ctx context.Context, req Request) (*R
 					fmt.Sprintf("The %s queue attribute cannot be changed after the queue has been created.", name),
 				)
 			}
-			continue // Attribute is immutable but unchanged — skip SetAttribute
+			continue // Attribute is immutable but unchanged — skip
 		}
-		if err := q.Attributes().SetAttribute(name, value); err != nil {
-			return nil, queue.NewInvalidAttributeName(err.Error())
-		}
+		settable[name] = value
+	}
+
+	// Set all attributes atomically under a single lock to prevent
+	// other goroutines from seeing a partially-updated state.
+	if err := q.Attributes().SetAttributes(settable); err != nil {
+		return nil, queue.NewInvalidAttributeName(err.Error())
 	}
 
 	return &Response{

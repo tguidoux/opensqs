@@ -2,6 +2,8 @@ package queue
 
 import (
 	"fmt"
+	"math"
+	"strings"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
@@ -34,7 +36,7 @@ func (l *Limits) VerifyMessageSize(body string, maxMessageSize int) error {
 		effectiveMax = effectiveMax * 2
 		// Guard against integer overflow
 		if effectiveMax < maxMessageSize {
-			effectiveMax = int(^uint(0) >> 1) // max int
+			effectiveMax = math.MaxInt
 		}
 	}
 	if len(body) > effectiveMax {
@@ -124,23 +126,16 @@ func (l *Limits) VerifyQueueName(name string) error {
 		return NewInvalidParameterValue(fmt.Sprintf("QueueName too long: %d characters, maximum is %d", len(name), types.MaxQueueNameLength))
 	}
 	// FIFO queues must end with .fifo
-	if len(name) >= 5 && name[len(name)-5:] == ".fifo" {
+	if strings.HasSuffix(name, ".fifo") {
 		// Validate the base name (before .fifo) uses valid characters
-		base := name[:len(name)-5]
-		for _, c := range base {
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
-				return NewInvalidParameterValue(fmt.Sprintf("Invalid character in QueueName: %c", c))
-			}
+		base := strings.TrimSuffix(name, ".fifo")
+		if err := validateQueueNameChars(base); err != nil {
+			return err
 		}
 		return nil
 	}
 	// Check for valid characters: alphanumeric, hyphens, underscores
-	for _, c := range name {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
-			return NewInvalidParameterValue(fmt.Sprintf("Invalid character in QueueName: %c", c))
-		}
-	}
-	return nil
+	return validateQueueNameChars(name)
 }
 
 // VerifyDeduplicationId checks if a deduplication ID is within the allowed size.
@@ -159,6 +154,17 @@ func (l *Limits) VerifyMessageGroupId(id string) error {
 		return NewInvalidParameterValue(
 			fmt.Sprintf("MessageGroupId too long: %d characters, maximum is %d", len(id), types.MaxMessageGroupIdLength),
 		)
+	}
+	return nil
+}
+
+// validateQueueNameChars checks that a queue name contains only valid characters:
+// alphanumeric, hyphens, and underscores.
+func validateQueueNameChars(name string) error {
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return NewInvalidParameterValue(fmt.Sprintf("Invalid character in QueueName: %c", c))
+		}
 	}
 	return nil
 }

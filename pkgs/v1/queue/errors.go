@@ -33,13 +33,10 @@ func NewQueueDoesNotExist(msg string) *SQSError {
 	}
 }
 
+// NewInvalidParameterValue delegates to types.NewInvalidParameterValue.
+// It is kept here for backward compatibility with callers that use the queue package.
 func NewInvalidParameterValue(msg string) *SQSError {
-	return &SQSError{
-		CodeValue:         "InvalidParameterValue",
-		HTTPStatusValue:   400,
-		ErrorTypeValue:    "Sender",
-		ErrorMessageValue: msg,
-	}
+	return types.NewInvalidParameterValue(msg)
 }
 
 func NewInvalidAttributeName(msg string) *SQSError {
@@ -117,13 +114,10 @@ func NewInvalidAttributeValue(msg string) *SQSError {
 	}
 }
 
+// NewReceiptHandleIsInvalid delegates to types.NewReceiptHandleIsInvalid.
+// It is kept here for backward compatibility with callers that use the queue package.
 func NewReceiptHandleIsInvalid(msg string) *SQSError {
-	return &SQSError{
-		CodeValue:         "ReceiptHandleIsInvalid",
-		HTTPStatusValue:   400,
-		ErrorTypeValue:    "Sender",
-		ErrorMessageValue: msg,
-	}
+	return types.NewReceiptHandleIsInvalid(msg)
 }
 
 func NewOverLimit(msg string) *SQSError {

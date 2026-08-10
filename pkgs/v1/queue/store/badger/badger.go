@@ -4,11 +4,6 @@ package badger
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -138,7 +133,7 @@ func (s *BadgerStore) SendMessage(ctx context.Context, msg *types.Message, delay
 
 		dedupID := msg.MessageDeduplicationID
 		if dedupID == "" && s.contentBasedDeduplication {
-			dedupID = computeContentBasedDedupID(msg.Body)
+			dedupID = store.ComputeContentBasedDedupID(msg.Body)
 		}
 
 		if dedupID != "" {
@@ -664,51 +659,16 @@ func (s *BadgerStore) storedToMessage(sm storedMessage) *types.Message {
 
 // generateReceiptHandle creates a signed, base64-encoded receipt handle.
 func (s *BadgerStore) generateReceiptHandle(messageID string, now time.Time) string {
-	info := types.ReceiptHandleInfo{
-		QueueName:        s.queueName,
-		MessageID:        messageID,
-		ReceiveTimestamp: now,
-		RandomNonce:      generateNonce(),
+	handle, err := store.GenerateReceiptHandle(s.queueName, messageID, now, s.serverSecret)
+	if err != nil {
+		return ""
 	}
-
-	data, _ := json.Marshal(info)
-	mac := hmac.New(sha256.New, s.serverSecret)
-	mac.Write(data)
-	signature := mac.Sum(nil)
-
-	handle := map[string]string{
-		"data":      base64.StdEncoding.EncodeToString(data),
-		"signature": hex.EncodeToString(signature),
-	}
-
-	encoded, _ := json.Marshal(handle)
-	return base64.StdEncoding.EncodeToString(encoded)
-}
-
-// generateNonce creates a random hex string.
-func generateNonce() string {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to time-based nonce if crypto/rand fails
-		return fmt.Sprintf("%x", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+	return handle
 }
 
 // cleanExpiredDedupEntries removes dedup cache entries that have exceeded the 5-minute window.
 func (s *BadgerStore) cleanExpiredDedupEntries() {
-	now := store.Now()
-	for id, expiry := range s.dedupCache {
-		if now.After(expiry) {
-			delete(s.dedupCache, id)
-		}
-	}
-}
-
-// computeContentBasedDedupID generates a deduplication ID from the message body using SHA-256.
-func computeContentBasedDedupID(body string) string {
-	h := sha256.Sum256([]byte(body))
-	return hex.EncodeToString(h[:])
+	store.CleanExpiredDedupEntries(s.dedupCache, store.Now())
 }
 
 // redriveIfNeededLocked checks if any messages should be redrived to a DLQ.
@@ -742,6 +702,7 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 				return json.Unmarshal(val, &sm)
 			})
 			if err != nil {
+				log.Printf("badger: failed to unmarshal message during redrive scan: %v", err)
 				continue
 			}
 
@@ -758,6 +719,7 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 		return nil
 	})
 	if err != nil {
+		log.Printf("badger: failed to scan for redrive candidates: %v", err)
 		return
 	}
 
@@ -765,17 +727,25 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 		return
 	}
 
-	// Redrive messages and delete from this queue in a single transaction
+	// Delete messages from this queue in a single transaction.
+	// redriveFunc is called after the transaction commits to avoid
+	// deadlock if redriveFunc accesses the same DB connection.
 	err = s.db.Update(func(txn *badger.Txn) error {
 		for _, rc := range toRedrive {
-			store.PrepareForRedrive(rc.msg)
-			s.redriveFunc(rc.msg)
-			txn.Delete(rc.key)
+			if err := txn.Delete(rc.key); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
-	_ = err // redrive errors are non-fatal; messages will be retried on next ReceiveMessages
 	if err != nil {
-		log.Printf("badger: redrive iteration error (non-fatal, will retry): %v", err)
+		log.Printf("badger: failed to delete redrived messages (non-fatal, will retry): %v", err)
+		return
+	}
+
+	// Call redriveFunc after the transaction is committed to avoid deadlock.
+	for _, rc := range toRedrive {
+		store.PrepareForRedrive(rc.msg)
+		s.redriveFunc(rc.msg)
 	}
 }

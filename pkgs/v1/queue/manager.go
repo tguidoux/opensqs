@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -101,7 +102,6 @@ func (qm *QueueManager) DeleteQueue(name string) error {
 	}
 
 	if err := q.Store().Close(); err != nil {
-		delete(qm.queues, name)
 		return fmt.Errorf("failed to close store for queue %q: %w", name, err)
 	}
 
@@ -139,7 +139,7 @@ func (qm *QueueManager) ListQueues(prefix string) []*Queue {
 
 	var result []*Queue
 	for _, q := range qm.queues {
-		if prefix == "" || len(q.Name()) >= len(prefix) && q.Name()[:len(prefix)] == prefix {
+		if prefix == "" || strings.HasPrefix(q.Name(), prefix) {
 			result = append(result, q)
 		}
 	}
@@ -184,10 +184,9 @@ func (qm *QueueManager) NodeAddress() string {
 // ARN format: arn:aws:sqs:<region>:<accountId>:<queueName>
 func (qm *QueueManager) LookupQueueByArn(arn string) (*Queue, error) {
 	// Extract queue name from the ARN (last segment after the last colon)
-	for i := len(arn) - 1; i >= 0; i-- {
-		if arn[i] == ':' {
-			return qm.LookupQueue(arn[i+1:])
-		}
+	idx := strings.LastIndex(arn, ":")
+	if idx >= 0 {
+		return qm.LookupQueue(arn[idx+1:])
 	}
 	return nil, NewQueueDoesNotExist(fmt.Sprintf("Invalid ARN or queue does not exist: %s", arn))
 }
@@ -237,17 +236,17 @@ func (qm *QueueManager) Shutdown(ctx context.Context) error {
 	qm.queues = make(map[string]*Queue)
 	qm.mu.Unlock()
 
-	var lastErr error
+	var errs []error
 	for name, q := range queues {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("shutdown interrupted: %w (last error: %v)", err, lastErr)
+			return fmt.Errorf("shutdown interrupted: %w", errors.Join(errs...))
 		}
 		if err := q.Store().Close(); err != nil {
-			lastErr = fmt.Errorf("failed to close store for queue %s: %w", name, err)
+			errs = append(errs, fmt.Errorf("failed to close store for queue %s: %w", name, err))
 		}
 	}
 
-	return lastErr
+	return errors.Join(errs...)
 }
 
 // attributesMatch checks if two QueueAttributes are equivalent for create-if-exists semantics.

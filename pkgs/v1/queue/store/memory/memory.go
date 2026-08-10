@@ -4,12 +4,6 @@ package memory
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -81,7 +75,7 @@ func (s *MemoryStore) SendMessage(ctx context.Context, msg *types.Message, delay
 		// Determine deduplication ID
 		dedupID := msg.MessageDeduplicationID
 		if dedupID == "" && s.contentBasedDeduplication {
-			dedupID = computeContentBasedDedupID(msg.Body)
+			dedupID = store.ComputeContentBasedDedupID(msg.Body)
 		}
 
 		// Check dedup cache — if seen within 5 minutes, return the existing message ID
@@ -414,51 +408,19 @@ func (s *MemoryStore) notifyWaiters() {
 
 // generateReceiptHandle creates a signed, base64-encoded receipt handle.
 func (s *MemoryStore) generateReceiptHandle(messageID string, now time.Time) string {
-	info := types.ReceiptHandleInfo{
-		QueueName:        s.queueName,
-		MessageID:        messageID,
-		ReceiveTimestamp: now,
-		RandomNonce:      generateNonce(),
+	handle, err := store.GenerateReceiptHandle(s.queueName, messageID, now, s.serverSecret)
+	if err != nil {
+		// This should never happen under normal operation.
+		// If it does, the receipt handle will be empty and the message
+		// becomes undeletable until it expires.
+		return ""
 	}
-
-	data, _ := json.Marshal(info)
-	mac := hmac.New(sha256.New, s.serverSecret)
-	mac.Write(data)
-	signature := mac.Sum(nil)
-
-	handle := map[string]string{
-		"data":      base64.StdEncoding.EncodeToString(data),
-		"signature": hex.EncodeToString(signature),
-	}
-
-	encoded, _ := json.Marshal(handle)
-	return base64.StdEncoding.EncodeToString(encoded)
-}
-
-// generateNonce creates a random hex string.
-func generateNonce() string {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to time-based nonce if crypto/rand fails
-		return fmt.Sprintf("%x", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+	return handle
 }
 
 // cleanExpiredDedupEntries removes dedup cache entries that have exceeded the 5-minute window.
 func (s *MemoryStore) cleanExpiredDedupEntries() {
-	now := store.Now()
-	for id, expiry := range s.dedupCache {
-		if now.After(expiry) {
-			delete(s.dedupCache, id)
-		}
-	}
-}
-
-// computeContentBasedDedupID generates a deduplication ID from the message body using SHA-256.
-func computeContentBasedDedupID(body string) string {
-	h := sha256.Sum256([]byte(body))
-	return hex.EncodeToString(h[:])
+	store.CleanExpiredDedupEntries(s.dedupCache, store.Now())
 }
 
 // copyMessage creates a deep copy of a Message to prevent callers from
@@ -470,6 +432,13 @@ func copyMessage(src *types.Message) *types.Message {
 		return nil
 	}
 	dst := *src
+	// Deep copy Attributes map
+	if src.Attributes != nil {
+		dst.Attributes = make(map[string]string, len(src.Attributes))
+		for k, v := range src.Attributes {
+			dst.Attributes[k] = v
+		}
+	}
 	// Deep copy MessageAttributes map
 	if src.MessageAttributes != nil {
 		dst.MessageAttributes = make(map[string]types.MessageAttribute, len(src.MessageAttributes))

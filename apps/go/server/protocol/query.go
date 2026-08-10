@@ -384,34 +384,30 @@ func (r *QueryRequest) GetAttributeNames() []string {
 	return names
 }
 
-// GetMessageAttributes extracts message attributes from form parameters.
-// Query Protocol uses "MessageAttribute.N.Name", "MessageAttribute.N.Value.DataType",
-// "MessageAttribute.N.Value.StringValue", "MessageAttribute.N.Value.BinaryValue".
-func (r *QueryRequest) GetMessageAttributes() map[string]types.MessageAttribute {
-	attrs := make(map[string]types.MessageAttribute)
+// attrParts holds the parsed components of a single message/system attribute.
+type attrParts struct {
+	name        string
+	dataType    string
+	stringValue string
+	binaryValue string
+}
 
-	// Collect all MessageAttribute.N.* keys
-	type attrParts struct {
-		name        string
-		dataType    string
-		stringValue string
-		binaryValue string
-	}
-
+// parseQueryAttrs parses indexed attribute parameters (e.g., "MessageAttribute.N.Name",
+// "MessageAttribute.N.Value.DataType") from query form params.
+// prefix is either "MessageAttribute." or "MessageSystemAttribute.".
+func parseQueryAttrs(values url.Values, prefix string) map[int]*attrParts {
 	parts := make(map[int]*attrParts)
 
-	for key, vals := range r.Params {
+	for key, vals := range values {
 		if len(vals) == 0 {
 			continue
 		}
 		value := vals[0]
 
-		// Must start with MessageAttribute.
-		if !strings.HasPrefix(key, "MessageAttribute.") {
+		if !strings.HasPrefix(key, prefix) {
 			continue
 		}
 
-		// Split: MessageAttribute.N.Name, MessageAttribute.N.Value.DataType, etc.
 		segments := strings.Split(key, ".")
 		if len(segments) < 3 {
 			continue
@@ -428,15 +424,13 @@ func (r *QueryRequest) GetMessageAttributes() map[string]types.MessageAttribute 
 			parts[idx] = entry
 		}
 
-		// The field is segments[2] (and possibly segments[3] for Value.X)
 		field := segments[2]
 		switch field {
 		case "Name":
 			entry.name = value
 		case "Value":
 			if len(segments) >= 4 {
-				subField := segments[3]
-				switch subField {
+				switch segments[3] {
 				case "DataType":
 					entry.dataType = value
 				case "StringValue":
@@ -448,6 +442,12 @@ func (r *QueryRequest) GetMessageAttributes() map[string]types.MessageAttribute 
 		}
 	}
 
+	return parts
+}
+
+// buildMessageAttributes converts parsed attrParts into typed MessageAttribute values.
+func buildMessageAttributes(parts map[int]*attrParts) map[string]types.MessageAttribute {
+	attrs := make(map[string]types.MessageAttribute)
 	for i := 1; i <= len(parts); i++ {
 		entry, ok := parts[i]
 		if !ok || entry.name == "" || entry.dataType == "" {
@@ -459,15 +459,43 @@ func (r *QueryRequest) GetMessageAttributes() map[string]types.MessageAttribute 
 			StringValue: entry.stringValue,
 		}
 		if entry.binaryValue != "" {
-			decoded, err := base64.StdEncoding.DecodeString(entry.binaryValue)
-			if err == nil {
+			if decoded, err := base64.StdEncoding.DecodeString(entry.binaryValue); err == nil {
 				attr.BinaryValue = decoded
 			}
 		}
 		attrs[entry.name] = attr
 	}
-
 	return attrs
+}
+
+// buildMessageSystemAttributes converts parsed attrParts into typed MessageSystemAttribute values.
+func buildMessageSystemAttributes(parts map[int]*attrParts) map[string]types.MessageSystemAttribute {
+	attrs := make(map[string]types.MessageSystemAttribute)
+	for i := 1; i <= len(parts); i++ {
+		entry, ok := parts[i]
+		if !ok || entry.name == "" || entry.dataType == "" {
+			continue
+		}
+
+		attr := types.MessageSystemAttribute{
+			DataType:    entry.dataType,
+			StringValue: entry.stringValue,
+		}
+		if entry.binaryValue != "" {
+			if decoded, err := base64.StdEncoding.DecodeString(entry.binaryValue); err == nil {
+				attr.BinaryValue = decoded
+			}
+		}
+		attrs[entry.name] = attr
+	}
+	return attrs
+}
+
+// GetMessageAttributes extracts message attributes from form parameters.
+// Query Protocol uses "MessageAttribute.N.Name", "MessageAttribute.N.Value.DataType",
+// "MessageAttribute.N.Value.StringValue", "MessageAttribute.N.Value.BinaryValue".
+func (r *QueryRequest) GetMessageAttributes() map[string]types.MessageAttribute {
+	return buildMessageAttributes(parseQueryAttrs(r.Params, "MessageAttribute."))
 }
 
 // GetMessageAttributeNames extracts MessageAttributeName.N parameters for ReceiveMessage.
@@ -495,82 +523,7 @@ func (r *QueryRequest) GetAttributes() map[string]string {
 // Query Protocol uses "MessageSystemAttribute.N.Name", "MessageSystemAttribute.N.Value.DataType",
 // "MessageSystemAttribute.N.Value.StringValue", "MessageSystemAttribute.N.Value.BinaryValue".
 func (r *QueryRequest) GetMessageSystemAttributes() map[string]types.MessageSystemAttribute {
-	attrs := make(map[string]types.MessageSystemAttribute)
-
-	type attrParts struct {
-		name        string
-		dataType    string
-		stringValue string
-		binaryValue string
-	}
-
-	parts := make(map[int]*attrParts)
-
-	for key, vals := range r.Params {
-		if len(vals) == 0 {
-			continue
-		}
-		value := vals[0]
-
-		if !strings.HasPrefix(key, "MessageSystemAttribute.") {
-			continue
-		}
-
-		segments := strings.Split(key, ".")
-		if len(segments) < 3 {
-			continue
-		}
-
-		idx, err := strconv.Atoi(segments[1])
-		if err != nil {
-			continue
-		}
-
-		entry, ok := parts[idx]
-		if !ok {
-			entry = &attrParts{}
-			parts[idx] = entry
-		}
-
-		field := segments[2]
-		switch field {
-		case "Name":
-			entry.name = value
-		case "Value":
-			if len(segments) >= 4 {
-				subField := segments[3]
-				switch subField {
-				case "DataType":
-					entry.dataType = value
-				case "StringValue":
-					entry.stringValue = value
-				case "BinaryValue":
-					entry.binaryValue = value
-				}
-			}
-		}
-	}
-
-	for i := 1; i <= len(parts); i++ {
-		entry, ok := parts[i]
-		if !ok || entry.name == "" || entry.dataType == "" {
-			continue
-		}
-
-		attr := types.MessageSystemAttribute{
-			DataType:    entry.dataType,
-			StringValue: entry.stringValue,
-		}
-		if entry.binaryValue != "" {
-			decoded, err := base64.StdEncoding.DecodeString(entry.binaryValue)
-			if err == nil {
-				attr.BinaryValue = decoded
-			}
-		}
-		attrs[entry.name] = attr
-	}
-
-	return attrs
+	return buildMessageSystemAttributes(parseQueryAttrs(r.Params, "MessageSystemAttribute."))
 }
 
 // GetTags extracts tags from form parameters.

@@ -4,14 +4,12 @@ package sqlite
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -107,10 +105,10 @@ func (s *SQLiteStore) initSchema() error {
 }
 
 // tableName returns the sanitized table name for this queue.
-// The queue name is validated at construction time (NewSQLiteStore),
-// so we only need to replace non-alphanumeric characters (except _)
-// with underscores. This is done rune-by-rune to avoid splitting
-// multi-byte UTF-8 characters.
+// The queue name is validated at construction time (NewSQLiteStore).
+// To avoid collisions between names that differ only in non-alphanumeric
+// characters (e.g. "my.queue" vs "my_queue"), we append a short hash
+// of the original name to the sanitized base.
 func (s *SQLiteStore) tableName() string {
 	var b strings.Builder
 	b.WriteString("queue_")
@@ -121,6 +119,10 @@ func (s *SQLiteStore) tableName() string {
 			b.WriteByte('_')
 		}
 	}
+	// Append 8-char hash of the original name to prevent collisions
+	h := sha256.Sum256([]byte(s.queueName))
+	b.WriteByte('_')
+	b.WriteString(hex.EncodeToString(h[:4]))
 	return b.String()
 }
 
@@ -139,7 +141,7 @@ func (s *SQLiteStore) SendMessage(ctx context.Context, msg *types.Message, delay
 
 		dedupID := msg.MessageDeduplicationID
 		if dedupID == "" && s.contentBasedDeduplication {
-			dedupID = computeContentBasedDedupID(msg.Body)
+			dedupID = store.ComputeContentBasedDedupID(msg.Body)
 		}
 
 		if dedupID != "" {
@@ -300,7 +302,9 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 			// Deserialize message attributes
 			if msgAttrsJSON != "" && msgAttrsJSON != "{}" {
 				var attrs map[string]types.MessageAttribute
-				if json.Unmarshal([]byte(msgAttrsJSON), &attrs) == nil {
+				if err := json.Unmarshal([]byte(msgAttrsJSON), &attrs); err != nil {
+					log.Printf("sqlite: failed to unmarshal message attributes for message %s: %v", id, err)
+				} else {
 					msg.MessageAttributes = attrs
 				}
 			}
@@ -308,7 +312,9 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 			// Deserialize system attributes
 			if sysAttrsJSON != "" && sysAttrsJSON != "{}" {
 				var sysAttrs map[string]types.MessageSystemAttribute
-				if json.Unmarshal([]byte(sysAttrsJSON), &sysAttrs) == nil {
+				if err := json.Unmarshal([]byte(sysAttrsJSON), &sysAttrs); err != nil {
+					log.Printf("sqlite: failed to unmarshal system attributes for message %s: %v", id, err)
+				} else {
 					msg.SystemAttributes = sysAttrs
 				}
 			}
@@ -422,7 +428,11 @@ func (s *SQLiteStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 		return fmt.Errorf("failed to delete message: %w", err)
 	}
 
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("sqlite: failed to get rows affected for delete: %v", err)
+		return nil
+	}
 	if rows == 0 {
 		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 	}
@@ -451,7 +461,11 @@ func (s *SQLiteStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 		if err != nil {
 			return fmt.Errorf("failed to change message visibility: %w", err)
 		}
-		rows, _ := result.RowsAffected()
+		rows, err := result.RowsAffected()
+		if err != nil {
+			log.Printf("sqlite: failed to get rows affected for visibility change: %v", err)
+			return nil
+		}
 		if rows == 0 {
 			return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 		}
@@ -467,7 +481,11 @@ func (s *SQLiteStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 		return fmt.Errorf("failed to change message visibility: %w", err)
 	}
 
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("sqlite: failed to get rows affected for visibility change: %v", err)
+		return nil
+	}
 	if rows == 0 {
 		return types.NewReceiptHandleIsInvalid(fmt.Sprintf("Receipt handle %s is invalid.", receiptHandle))
 	}
@@ -555,51 +573,16 @@ func (s *SQLiteStore) Close() error {
 
 // generateReceiptHandle creates a signed, base64-encoded receipt handle.
 func (s *SQLiteStore) generateReceiptHandle(messageID string, now time.Time) string {
-	info := types.ReceiptHandleInfo{
-		QueueName:        s.queueName,
-		MessageID:        messageID,
-		ReceiveTimestamp: now,
-		RandomNonce:      generateNonce(),
+	handle, err := store.GenerateReceiptHandle(s.queueName, messageID, now, s.serverSecret)
+	if err != nil {
+		return ""
 	}
-
-	data, _ := json.Marshal(info)
-	mac := hmac.New(sha256.New, s.serverSecret)
-	mac.Write(data)
-	signature := mac.Sum(nil)
-
-	handle := map[string]string{
-		"data":      base64.StdEncoding.EncodeToString(data),
-		"signature": hex.EncodeToString(signature),
-	}
-
-	encoded, _ := json.Marshal(handle)
-	return base64.StdEncoding.EncodeToString(encoded)
-}
-
-// generateNonce creates a random hex string.
-func generateNonce() string {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to time-based nonce if crypto/rand fails
-		return fmt.Sprintf("%x", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+	return handle
 }
 
 // cleanExpiredDedupEntries removes dedup cache entries that have exceeded the 5-minute window.
 func (s *SQLiteStore) cleanExpiredDedupEntries() {
-	now := store.Now()
-	for id, expiry := range s.dedupCache {
-		if now.After(expiry) {
-			delete(s.dedupCache, id)
-		}
-	}
-}
-
-// computeContentBasedDedupID generates a deduplication ID from the message body using SHA-256.
-func computeContentBasedDedupID(body string) string {
-	h := sha256.Sum256([]byte(body))
-	return hex.EncodeToString(h[:])
+	store.CleanExpiredDedupEntries(s.dedupCache, store.Now())
 }
 
 // redriveIfNeededLocked checks if any messages should be redrived to a DLQ.
@@ -626,6 +609,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 
 	rows, err := s.db.QueryContext(ctx, query, now.UnixMilli(), s.maxReceiveCount)
 	if err != nil {
+		log.Printf("sqlite: failed to query messages for redrive: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -642,6 +626,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 
 		if err := rows.Scan(&id, &body, &md5OfBody, &md5OfMsgAttrs, &msgAttrsJSON, &sysAttrsJSON,
 			&sentTs, &receiveCount, &firstReceived, &sequenceNumber, &dedupID, &groupID); err != nil {
+			log.Printf("sqlite: failed to scan redrive row: %v", err)
 			continue
 		}
 
@@ -658,14 +643,18 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 
 		if msgAttrsJSON != "" && msgAttrsJSON != "{}" {
 			var attrs map[string]types.MessageAttribute
-			if json.Unmarshal([]byte(msgAttrsJSON), &attrs) == nil {
+			if err := json.Unmarshal([]byte(msgAttrsJSON), &attrs); err != nil {
+				log.Printf("sqlite: failed to unmarshal message attributes during redrive for message %s: %v", id, err)
+			} else {
 				msg.MessageAttributes = attrs
 			}
 		}
 
 		if sysAttrsJSON != "" && sysAttrsJSON != "{}" {
 			var sysAttrs map[string]types.MessageSystemAttribute
-			if json.Unmarshal([]byte(sysAttrsJSON), &sysAttrs) == nil {
+			if err := json.Unmarshal([]byte(sysAttrsJSON), &sysAttrs); err != nil {
+				log.Printf("sqlite: failed to unmarshal system attributes during redrive for message %s: %v", id, err)
+			} else {
 				msg.SystemAttributes = sysAttrs
 			}
 		}
@@ -677,26 +666,35 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 	// Redrive messages and delete from this queue atomically
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		log.Printf("sqlite: failed to begin redrive transaction: %v", err)
 		return
 	}
 	defer tx.Rollback() //nolint:errcheck
 
 	deleteStmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, tableName))
 	if err != nil {
+		log.Printf("sqlite: failed to prepare redrive delete statement: %v", err)
 		return
 	}
 	defer deleteStmt.Close()
 
+	// Delete messages first, then call redriveFunc outside the transaction
+	// to avoid deadlock if redriveFunc accesses the same DB connection.
 	for i, msg := range toRedrive {
-		store.PrepareForRedrive(msg)
-		s.redriveFunc(msg)
-
 		if _, err := deleteStmt.ExecContext(ctx, idsToDelete[i]); err != nil {
+			log.Printf("sqlite: failed to delete redrived message %s: %v", idsToDelete[i], err)
 			return
 		}
+		store.PrepareForRedrive(msg)
 	}
 
 	if err := tx.Commit(); err != nil {
+		log.Printf("sqlite: failed to commit redrive transaction: %v", err)
 		return
+	}
+
+	// Call redriveFunc after the transaction is committed to avoid deadlock.
+	for _, msg := range toRedrive {
+		s.redriveFunc(msg)
 	}
 }

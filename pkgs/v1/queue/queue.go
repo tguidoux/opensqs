@@ -4,7 +4,11 @@ package queue
 
 import (
 	"fmt"
+	"maps"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -14,6 +18,7 @@ import (
 type Queue struct {
 	name       string
 	attributes *QueueAttributes
+	tagsMu     sync.RWMutex
 	tags       map[string]string
 	store      store.Store
 }
@@ -49,35 +54,43 @@ func (q *Queue) Store() store.Store {
 
 // Tags returns a copy of the queue tags to prevent external mutation.
 func (q *Queue) Tags() map[string]string {
-	out := make(map[string]string, len(q.tags))
-	for k, v := range q.tags {
-		out[k] = v
-	}
-	return out
+	q.tagsMu.RLock()
+	defer q.tagsMu.RUnlock()
+	return maps.Clone(q.tags)
 }
 
 // SetTags sets the queue tags. The tags map is copied to avoid external mutation.
 func (q *Queue) SetTags(tags map[string]string) {
-	q.tags = make(map[string]string, len(tags))
-	for k, v := range tags {
-		q.tags[k] = v
-	}
+	q.tagsMu.Lock()
+	defer q.tagsMu.Unlock()
+	q.tags = maps.Clone(tags)
+}
+
+// UpdateTags atomically applies a mutation function to the queue tags.
+// The fn receives a copy of the current tags and returns the updated tags.
+// This prevents the get-modify-set race that would occur if callers used
+// Tags() + SetTags() separately.
+func (q *Queue) UpdateTags(fn func(tags map[string]string) map[string]string) {
+	q.tagsMu.Lock()
+	defer q.tagsMu.Unlock()
+	q.tags = fn(maps.Clone(q.tags))
 }
 
 // IsFifo returns true if this is a FIFO queue.
 func (q *Queue) IsFifo() bool {
 	val, _ := q.attributes.GetAttribute(types.AttributeFifoQueue)
-	return val == "true"
+	b, _ := strconv.ParseBool(val)
+	return b
 }
 
 // GetQueueArn returns the queue ARN from attributes.
 func (q *Queue) GetQueueArn() string {
-	return q.attributes.QueueArn
+	return q.attributes.GetQueueArn()
 }
 
 // GetRedrivePolicy returns the redrive policy from attributes.
 func (q *Queue) GetRedrivePolicy() string {
-	return q.attributes.RedrivePolicy
+	return q.attributes.GetRedrivePolicy()
 }
 
 // URL returns the full URL for this queue.
@@ -91,7 +104,12 @@ func (q *Queue) URL(nodeAddress, accountID string) string {
 	} else {
 		nodeAddress = strings.TrimPrefix(nodeAddress, "http://")
 	}
-	return fmt.Sprintf("%s://%s/%s/%s", scheme, nodeAddress, accountID, q.name)
+	u := &url.URL{
+		Scheme: scheme,
+		Host:   nodeAddress,
+		Path:   fmt.Sprintf("%s/%s", accountID, q.name),
+	}
+	return u.String()
 }
 
 // ARN returns the ARN for this queue.

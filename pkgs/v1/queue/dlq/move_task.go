@@ -51,7 +51,7 @@ type MoveTask struct {
 	taskHandle                   string
 	sourceArn                    string
 	destinationArn               string
-	status                       MoveTaskStatus
+	status                       atomic.Value // stores MoveTaskStatus
 	maxNumberOfMessagesPerSecond int
 	movedMessages                atomic.Int64
 	startedAt                    time.Time
@@ -69,9 +69,13 @@ func (t *MoveTask) SourceArn() string { return t.sourceArn }
 func (t *MoveTask) DestinationArn() string { return t.destinationArn }
 
 // Status returns the current task status.
-// Callers should obtain the MoveTask via MoveTaskManager methods (ListTasks, GetTask)
-// which hold the read lock, ensuring a consistent snapshot.
-func (t *MoveTask) Status() MoveTaskStatus { return t.status }
+// Thread-safe via atomic.Value.
+func (t *MoveTask) Status() MoveTaskStatus {
+	if v := t.status.Load(); v != nil {
+		return v.(MoveTaskStatus)
+	}
+	return MoveTaskStatusFailed
+}
 
 // MaxNumberOfMessagesPerSecond returns the rate limit for this task.
 func (t *MoveTask) MaxNumberOfMessagesPerSecond() int { return t.maxNumberOfMessagesPerSecond }
@@ -101,6 +105,7 @@ type MoveTaskManager struct {
 	lookupFn    QueueLookupFunc
 	listFn      QueueListFunc
 	stopCleanup chan struct{}
+	closeOnce   sync.Once
 }
 
 // NewMoveTaskManager creates a new MoveTaskManager wired to the given lookup and list functions.
@@ -137,7 +142,8 @@ func (mtm *MoveTaskManager) removeStaleTasks() {
 	defer mtm.mu.Unlock()
 	now := time.Now()
 	for handle, t := range mtm.tasks {
-		if t.status == MoveTaskStatusRunning || t.status == MoveTaskStatusCancelling {
+		status := t.Status()
+		if status == MoveTaskStatusRunning || status == MoveTaskStatusCancelling {
 			continue
 		}
 		if now.Sub(t.startedAt) > taskTTL {
@@ -147,8 +153,11 @@ func (mtm *MoveTaskManager) removeStaleTasks() {
 }
 
 // Close stops the cleanup goroutine. Call this when the manager is no longer needed.
+// Safe to call multiple times.
 func (mtm *MoveTaskManager) Close() {
-	close(mtm.stopCleanup)
+	mtm.closeOnce.Do(func() {
+		close(mtm.stopCleanup)
+	})
 }
 
 // StartTask creates and starts a new message move task.
@@ -202,17 +211,21 @@ func (mtm *MoveTaskManager) StartTask(sourceArn, destinationArn string, maxRate 
 		taskHandle:                   taskHandle,
 		sourceArn:                    sourceArn,
 		destinationArn:               destinationArn,
-		status:                       MoveTaskStatusRunning,
 		maxNumberOfMessagesPerSecond: maxRate,
 		startedAt:                    time.Now().UTC(),
 		cancelled:                    make(chan struct{}),
 	}
+	task.status.Store(MoveTaskStatusRunning)
 
 	mtm.mu.Lock()
 	mtm.tasks[taskHandle] = task
 	mtm.mu.Unlock()
 
-	go mtm.runTask(context.Background(), task, sourceQueue, destQueue)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		mtm.runTask(ctx, task, sourceQueue, destQueue)
+		cancel()
+	}()
 
 	return task, nil
 }
@@ -228,14 +241,14 @@ func (mtm *MoveTaskManager) CancelTask(taskHandle string) (int, error) {
 		return 0, fmt.Errorf("task not found: %s", taskHandle)
 	}
 
-	if task.status != MoveTaskStatusRunning {
+	if task.Status() != MoveTaskStatusRunning {
 		return int(task.movedMessages.Load()), nil
 	}
 
 	// Mark as cancelling and signal the background goroutine.
 	// The goroutine will set the final Cancelled status when it stops.
 	// sync.Once prevents panic on double-cancel.
-	task.status = MoveTaskStatusCancelling
+	task.status.Store(MoveTaskStatusCancelling)
 	task.cancelOnce.Do(func() {
 		close(task.cancelled)
 	})
@@ -340,9 +353,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 
 // setTaskStatus safely updates a task's status.
 func (mtm *MoveTaskManager) setTaskStatus(task *MoveTask, status MoveTaskStatus) {
-	mtm.mu.Lock()
-	task.status = status
-	mtm.mu.Unlock()
+	task.status.Store(status)
 }
 
 // generateTaskHandle creates a unique task handle.

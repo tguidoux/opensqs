@@ -21,26 +21,15 @@ func GetRegion(env environment.Environment) string {
 	}
 }
 
+// GetSSMRegion returns the same region as GetRegion.
+// Kept as a separate function for semantic clarity.
 func GetSSMRegion(env environment.Environment) string {
-	switch env {
-	case environment.AOOSTAR:
-		return ""
-	case environment.LOCAL:
-		return ""
-	default:
-		return "us-east-1"
-	}
+	return GetRegion(env)
 }
 
+// GetS3Region always returns "us-east-1" since S3 is global.
 func GetS3Region(env environment.Environment) string {
-	switch env {
-	case environment.AOOSTAR:
-		return "us-east-1"
-	case environment.LOCAL:
-		return "us-east-1"
-	default:
-		return "us-east-1"
-	}
+	return "us-east-1"
 }
 
 func GetSQSRegion(env environment.Environment) string {

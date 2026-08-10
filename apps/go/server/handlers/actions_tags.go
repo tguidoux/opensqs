@@ -31,9 +31,15 @@ func (h *Handler) handleTagQueue(ctx context.Context, req Request) (*Response, e
 		if len(value) > types.MaxTagValueLength {
 			return nil, queue.NewInvalidParameterValue(fmt.Sprintf("Tag value too long (max %d): %s.", types.MaxTagValueLength, value))
 		}
-		currentTags[key] = value
 	}
-	q.SetTags(currentTags)
+
+	// Atomically merge new tags into existing tags to avoid get-modify-set race.
+	q.UpdateTags(func(existing map[string]string) map[string]string {
+		for key, value := range tags {
+			existing[key] = value
+		}
+		return existing
+	})
 
 	return &Response{
 		Action:    types.ActionTagQueue,
@@ -49,11 +55,14 @@ func (h *Handler) handleUntagQueue(ctx context.Context, req Request) (*Response,
 	}
 
 	tagKeys := req.GetTagKeys()
-	currentTags := q.Tags()
-	for _, key := range tagKeys {
-		delete(currentTags, key)
-	}
-	q.SetTags(currentTags)
+
+	// Atomically remove tags to avoid get-modify-set race.
+	q.UpdateTags(func(existing map[string]string) map[string]string {
+		for _, key := range tagKeys {
+			delete(existing, key)
+		}
+		return existing
+	})
 
 	return &Response{
 		Action:    types.ActionUntagQueue,

@@ -103,7 +103,7 @@ func TestUncontextualLoggerWithExtra(t *testing.T) {
 	// Add extra fields
 	simpleLoggerWithExtra := simpleLogger.WithExtra(map[string]any{"key": "value", "number": 42})
 	require.NotNil(t, simpleLoggerWithExtra)
-	assert.Equal(t, simpleLoggerWithExtra, simpleLogger) // Should return same instance
+	assert.NotEqual(t, simpleLoggerWithExtra, simpleLogger) // Should return a new instance
 
 	// Log should include extra
 	simpleLoggerWithExtra.Info("test message")

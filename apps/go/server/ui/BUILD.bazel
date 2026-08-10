@@ -18,6 +18,7 @@ opensqs_go_library(
     importpath = "github.com/tguidoux/opensqs/apps/go/server/ui",
     visibility = ["//visibility:public"],
     deps = [
+        "//apps/go/server/serverbase:go_default_library",
         "//pkgs/v1/logger:go_default_library",
         "//pkgs/v1/queue:go_default_library",
         "//pkgs/v1/queue/types:go_default_library",

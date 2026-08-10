@@ -81,8 +81,8 @@ func (s *UncontextualLogger) Warningf(format string, args ...any) LoggerInterfac
 
 // WithExtra adds extra fields to the logger.
 func (s *UncontextualLogger) WithExtra(extra ...map[string]any) LoggerInterface {
-	s.logger.WithExtra(extra...)
-	return s
+	newLogger := s.logger.WithExtra(extra...)
+	return &UncontextualLogger{logger: newLogger}
 }
 
 // GetWriter returns the output writer (currently always os.Stdout).

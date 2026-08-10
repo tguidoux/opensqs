@@ -110,6 +110,29 @@ type messageDisplay struct {
 	SentTimestamp string
 }
 
+// newQueueListItem builds a queueListItem from a queue and manager context.
+func newQueueListItem(q *queue.Queue, mgr *queue.QueueManager) queueListItem {
+	return queueListItem{
+		Name:      q.Name(),
+		IsFifo:    q.IsFifo(),
+		Available: q.ApproximateNumberOfMessages(),
+		InFlight:  q.ApproximateNumberOfMessagesNotVisible(),
+		Delayed:   q.ApproximateNumberOfMessagesDelayed(),
+		URL:       q.URL(mgr.NodeAddress(), mgr.AccountID()),
+	}
+}
+
+// newMessageDisplay builds a messageDisplay from a message.
+func newMessageDisplay(m *types.Message) messageDisplay {
+	return messageDisplay{
+		MessageID:     m.MessageID,
+		ReceiptHandle: m.ReceiptHandle,
+		Body:          m.Body,
+		ReceiveCount:  m.ApproximateReceiveCount,
+		SentTimestamp: m.SentTimestamp.Format("2006-01-02 15:04:05"),
+	}
+}
+
 // --- Metrics data models for templates ---
 
 type metricsData struct {
@@ -162,14 +185,7 @@ func (h *handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 	queues := h.manager.ListQueues("")
 	items := make([]queueListItem, 0, len(queues))
 	for _, q := range queues {
-		items = append(items, queueListItem{
-			Name:      q.Name(),
-			IsFifo:    q.IsFifo(),
-			Available: q.ApproximateNumberOfMessages(),
-			InFlight:  q.ApproximateNumberOfMessagesNotVisible(),
-			Delayed:   q.ApproximateNumberOfMessagesDelayed(),
-			URL:       q.URL(h.manager.NodeAddress(), h.manager.AccountID()),
-		})
+		items = append(items, newQueueListItem(q, h.manager))
 	}
 
 	data := pageData{
@@ -352,13 +368,7 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 	}
 	msgDisplays := make([]messageDisplay, 0, len(msgs))
 	for _, m := range msgs {
-		msgDisplays = append(msgDisplays, messageDisplay{
-			MessageID:     m.MessageID,
-			ReceiptHandle: m.ReceiptHandle,
-			Body:          m.Body,
-			ReceiveCount:  m.ApproximateReceiveCount,
-			SentTimestamp: m.SentTimestamp.Format("2006-01-02 15:04:05"),
-		})
+		msgDisplays = append(msgDisplays, newMessageDisplay(m))
 	}
 
 	data := queueDetailData{
@@ -500,14 +510,7 @@ func (h *handler) handleAPIQueues(w http.ResponseWriter, r *http.Request) {
 	queues := h.manager.ListQueues("")
 	items := make([]queueListItem, 0, len(queues))
 	for _, q := range queues {
-		items = append(items, queueListItem{
-			Name:      q.Name(),
-			IsFifo:    q.IsFifo(),
-			Available: q.ApproximateNumberOfMessages(),
-			InFlight:  q.ApproximateNumberOfMessagesNotVisible(),
-			Delayed:   q.ApproximateNumberOfMessagesDelayed(),
-			URL:       q.URL(h.manager.NodeAddress(), h.manager.AccountID()),
-		})
+		items = append(items, newQueueListItem(q, h.manager))
 	}
 	writeJSON(w, items)
 }
@@ -537,34 +540,21 @@ func (h *handler) handleAPIQueueMessages(w http.ResponseWriter, r *http.Request)
 		}
 		displays := make([]messageDisplay, 0, len(msgs))
 		for _, m := range msgs {
-			displays = append(displays, messageDisplay{
-				MessageID:     m.MessageID,
-				ReceiptHandle: m.ReceiptHandle,
-				Body:          m.Body,
-				ReceiveCount:  m.ApproximateReceiveCount,
-				SentTimestamp: m.SentTimestamp.Format("2006-01-02 15:04:05"),
-			})
+			displays = append(displays, newMessageDisplay(m))
 		}
 		writeJSON(w, displays)
 		return
 	}
 
 	// Otherwise return queue summary
-	writeJSON(w, queueListItem{
-		Name:      q.Name(),
-		IsFifo:    q.IsFifo(),
-		Available: q.ApproximateNumberOfMessages(),
-		InFlight:  q.ApproximateNumberOfMessagesNotVisible(),
-		Delayed:   q.ApproximateNumberOfMessagesDelayed(),
-		URL:       q.URL(h.manager.NodeAddress(), h.manager.AccountID()),
-	})
+	writeJSON(w, newQueueListItem(q, h.manager))
 }
 
 // --- Helpers ---
 
 // renderTemplate executes the named template with the given data.
 // It injects MetricsEnabled into the data when the data type supports it.
-func (h *handler) renderTemplate(w http.ResponseWriter, name string, data interface{}) {
+func (h *handler) renderTemplate(w http.ResponseWriter, name string, data any) {
 	// Inject MetricsEnabled into known data types
 	switch d := data.(type) {
 	case *pageData:

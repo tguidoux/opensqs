@@ -1,14 +1,13 @@
 package ui
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/tguidoux/opensqs/apps/go/server/serverbase"
 	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 )
@@ -17,11 +16,8 @@ import (
 // It serves server-side rendered HTML pages and JSON API endpoints
 // for queue management, mirroring the health server lifecycle pattern.
 type Server struct {
-	server   *http.Server
-	log      logger.LoggerInterface
-	tlsCfg   *tls.Config
-	certFile string
-	keyFile  string
+	*serverbase.Server
+	log logger.LoggerInterface
 }
 
 // NewServer creates a new UI server on the given port.
@@ -55,50 +51,10 @@ func NewServer(port int, manager *queue.QueueManager, log logger.LoggerInterface
 	// Wrap with security headers and CSRF protection
 	securedMux := withCSRFProtection(withSecurityHeaders(mux))
 
-	s := &Server{
-		server: &http.Server{
-			Addr:              fmt.Sprintf(":%d", port),
-			Handler:           securedMux,
-			ReadTimeout:       10 * time.Second,
-			ReadHeaderTimeout: 5 * time.Second,
-			WriteTimeout:      10 * time.Second,
-			IdleTimeout:       120 * time.Second,
-		},
-		log: log,
+	return &Server{
+		Server: serverbase.New(port, securedMux, tlsCfg, 10, 10, 120),
+		log:    log,
 	}
-
-	if tlsCfg != nil {
-		s.server.TLSConfig = tlsCfg
-		s.tlsCfg = tlsCfg
-	}
-
-	return s
-}
-
-// SetCertFiles sets the certificate and key file paths for TLS.
-// Must be called before Start() if TLS is enabled.
-func (s *Server) SetCertFiles(certFile, keyFile string) {
-	s.certFile = certFile
-	s.keyFile = keyFile
-}
-
-// Start begins listening for UI requests.
-func (s *Server) Start() error {
-	if s.tlsCfg != nil {
-		return s.server.ListenAndServeTLS(s.certFile, s.keyFile)
-	}
-	return s.server.ListenAndServe()
-}
-
-// Stop gracefully shuts down the UI server.
-func (s *Server) Stop(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
-}
-
-// Handler returns the HTTP handler used by the server.
-// This is primarily useful for testing with httptest.
-func (s *Server) Handler() http.Handler {
-	return s.server.Handler
 }
 
 // withSecurityHeaders wraps an http.Handler with standard security headers.

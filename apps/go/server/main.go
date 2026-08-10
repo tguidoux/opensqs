@@ -194,17 +194,7 @@ func main() {
 		if healthTLS != nil {
 			healthServer.SetCertFiles(cfg.Health.TLS.CertFile, cfg.Health.TLS.KeyFile)
 		}
-		go func() {
-			log.Infof("starting health check server on :%d", healthPort)
-			if err := healthServer.Start(); err != nil && err != http.ErrServerClosed {
-				log.Errorf("health check server error: %v", err)
-			}
-		}()
-		defer func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = healthServer.Stop(ctx)
-		}()
+		startServerable(log, "health check", healthPort, healthServer)
 	}
 
 	// Start UI server (if enabled)
@@ -218,17 +208,7 @@ func main() {
 		if uiTLS != nil {
 			uiServer.SetCertFiles(cfg.UI.TLS.CertFile, cfg.UI.TLS.KeyFile)
 		}
-		go func() {
-			log.Infof("starting UI server on :%d", cfg.UI.Port)
-			if err := uiServer.Start(); err != nil && err != http.ErrServerClosed {
-				log.Errorf("UI server error: %v", err)
-			}
-		}()
-		defer func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = uiServer.Stop(ctx)
-		}()
+		startServerable(log, "UI", cfg.UI.Port, uiServer)
 	}
 
 	// Start metrics server (if enabled)
@@ -246,17 +226,7 @@ func main() {
 		if metricsTLS != nil {
 			metricsServer.SetCertFiles(cfg.Metrics.TLS.CertFile, cfg.Metrics.TLS.KeyFile)
 		}
-		go func() {
-			log.Infof("starting metrics server on :%d", metricsPort)
-			if err := metricsServer.Start(); err != nil && err != http.ErrServerClosed {
-				log.Errorf("metrics server error: %v", err)
-			}
-		}()
-		defer func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = metricsServer.Stop(ctx)
-		}()
+		startServerable(log, "metrics", metricsPort, metricsServer)
 	}
 
 	// Start HTTP server in goroutine
@@ -300,4 +270,24 @@ func main() {
 	}
 
 	log.Info("server stopped")
+}
+
+// startServerable starts a server in a goroutine and registers a deferred
+// graceful shutdown. It eliminates the duplicated start/stop lifecycle code
+// that was repeated for health, UI, and metrics servers.
+func startServerable(log logger.LoggerInterface, name string, port int, s interface {
+	Start() error
+	Stop(context.Context) error
+}) {
+	go func() {
+		log.Infof("starting %s server on :%d", name, port)
+		if err := s.Start(); err != nil && err != http.ErrServerClosed {
+			log.Errorf("%s server error: %v", name, err)
+		}
+	}()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+	}()
 }

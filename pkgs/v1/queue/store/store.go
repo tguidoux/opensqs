@@ -4,6 +4,13 @@ package store
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -98,4 +105,61 @@ func PrepareForRedrive(msg *types.Message) {
 	msg.ReceiptHandle = ""
 	msg.IsVisible = true
 	msg.ApproximateReceiveCount = 0
+}
+
+// GenerateReceiptHandle creates a signed, base64-encoded receipt handle.
+// The handle contains the queue name, message ID, receive timestamp, and a
+// random nonce, signed with the server secret for tamper resistance.
+func GenerateReceiptHandle(queueName, messageID string, now time.Time, serverSecret []byte) (string, error) {
+	info := types.ReceiptHandleInfo{
+		QueueName:        queueName,
+		MessageID:        messageID,
+		ReceiveTimestamp: now,
+		RandomNonce:      GenerateNonce(),
+	}
+
+	data, err := json.Marshal(info)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal receipt handle info: %w", err)
+	}
+	mac := hmac.New(sha256.New, serverSecret)
+	mac.Write(data)
+	signature := mac.Sum(nil)
+
+	handle := map[string]string{
+		"data":      base64.StdEncoding.EncodeToString(data),
+		"signature": hex.EncodeToString(signature),
+	}
+
+	encoded, err := json.Marshal(handle)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal receipt handle: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(encoded), nil
+}
+
+// GenerateNonce creates a random hex string.
+// Falls back to a time-based nonce if crypto/rand fails.
+func GenerateNonce() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based nonce if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// ComputeContentBasedDedupID generates a deduplication ID from the message body using SHA-256.
+func ComputeContentBasedDedupID(body string) string {
+	h := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(h[:])
+}
+
+// CleanExpiredDedupEntries removes dedup cache entries that have exceeded the dedup window.
+func CleanExpiredDedupEntries(cache map[string]time.Time, now time.Time) {
+	for id, expiry := range cache {
+		if now.After(expiry) {
+			delete(cache, id)
+		}
+	}
 }

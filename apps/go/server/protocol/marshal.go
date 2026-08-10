@@ -461,11 +461,7 @@ func jsonMarshal(v any) ([]byte, error) {
 		return nil, err
 	}
 	// Trim trailing newline added by Encode
-	result := buf.String()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-	return []byte(result), nil
+	return []byte(strings.TrimRight(buf.String(), "\n")), nil
 }
 
 // MarshalJSONResponse marshals a JSON response struct to JSON bytes.

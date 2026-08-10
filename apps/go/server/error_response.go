@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -12,8 +13,8 @@ import (
 
 // writeErrorResponse writes an SQS error response in the appropriate format.
 func writeErrorResponse(w http.ResponseWriter, err error, proto handlers.ProtocolType, requestID string) {
-	sqsErr, ok := err.(types.SQSError)
-	if !ok {
+	var sqsErr types.SQSError
+	if !errors.As(err, &sqsErr) {
 		sqsErr = queue.NewInternalError(err.Error())
 	}
 

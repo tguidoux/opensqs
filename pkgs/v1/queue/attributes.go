@@ -217,25 +217,30 @@ func (a *QueueAttributes) AllAttributes() map[string]string {
 	return result
 }
 
+// validAttributes is the canonical list of all settable SQS queue attribute names.
+// AllAttributeNames, GetAttribute, SetAttribute, and AllAttributes reference
+// this list to ensure consistency and avoid duplication.
+var validAttributes = []string{
+	types.AttributeVisibilityTimeout,
+	types.AttributeDelaySeconds,
+	types.AttributeMaximumMessageSize,
+	types.AttributeMessageRetentionPeriod,
+	types.AttributeReceiveMessageWaitTimeSeconds,
+	types.AttributeQueueArn,
+	types.AttributePolicy,
+	types.AttributeRedrivePolicy,
+	types.AttributeFifoQueue,
+	types.AttributeContentBasedDeduplication,
+	types.AttributeKmsMasterKeyId,
+	types.AttributeKmsDataKeyReusePeriodSeconds,
+	types.AttributeDeduplicationScope,
+	types.AttributeFifoThroughputLimit,
+	types.AttributeSqsManagedSseEnabled,
+}
+
 // AllAttributeNames returns the list of all settable attribute names.
 func AllAttributeNames() []string {
-	return []string{
-		types.AttributeVisibilityTimeout,
-		types.AttributeDelaySeconds,
-		types.AttributeMaximumMessageSize,
-		types.AttributeMessageRetentionPeriod,
-		types.AttributeReceiveMessageWaitTimeSeconds,
-		types.AttributeQueueArn,
-		types.AttributePolicy,
-		types.AttributeRedrivePolicy,
-		types.AttributeFifoQueue,
-		types.AttributeContentBasedDeduplication,
-		types.AttributeKmsMasterKeyId,
-		types.AttributeKmsDataKeyReusePeriodSeconds,
-		types.AttributeDeduplicationScope,
-		types.AttributeFifoThroughputLimit,
-		types.AttributeSqsManagedSseEnabled,
-	}
+	return validAttributes
 }
 
 // GetQueueArn returns the queue ARN.
@@ -250,4 +255,124 @@ func (a *QueueAttributes) GetRedrivePolicy() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.RedrivePolicy
+}
+
+// SetAttributes sets multiple attributes atomically under a single lock.
+// If any attribute fails validation, no attributes are changed.
+func (a *QueueAttributes) SetAttributes(attrs map[string]string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Validate all attributes first without applying changes.
+	// We use a temporary copy to validate, then apply if all succeed.
+	for name, value := range attrs {
+		if err := a.validateAndSet(name, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateAndSet sets a single attribute. The caller must hold the mutex.
+// This is the unlocked version of SetAttribute used by SetAttributes.
+func (a *QueueAttributes) validateAndSet(name, value string) error {
+	switch name {
+	case types.AttributeVisibilityTimeout:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid VisibilityTimeout: %s", value)
+		}
+		if v < types.MinVisibilityTimeout || v > types.MaxVisibilityTimeout {
+			return fmt.Errorf("VisibilityTimeout must be between %d and %d", types.MinVisibilityTimeout, types.MaxVisibilityTimeout)
+		}
+		a.VisibilityTimeout = v
+	case types.AttributeDelaySeconds:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid DelaySeconds: %s", value)
+		}
+		if v < types.MinDelaySeconds || v > types.MaxDelaySeconds {
+			return fmt.Errorf("DelaySeconds must be between %d and %d", types.MinDelaySeconds, types.MaxDelaySeconds)
+		}
+		a.DelaySeconds = v
+	case types.AttributeMaximumMessageSize:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid MaximumMessageSize: %s", value)
+		}
+		if v < types.MinMaximumMessageSize || v > types.MaxMaximumMessageSize {
+			return fmt.Errorf("MaximumMessageSize must be between %d and %d", types.MinMaximumMessageSize, types.MaxMaximumMessageSize)
+		}
+		a.MaximumMessageSize = v
+	case types.AttributeMessageRetentionPeriod:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid MessageRetentionPeriod: %s", value)
+		}
+		if v < types.MinMessageRetentionPeriod || v > types.MaxMessageRetentionPeriod {
+			return fmt.Errorf("MessageRetentionPeriod must be between %d and %d", types.MinMessageRetentionPeriod, types.MaxMessageRetentionPeriod)
+		}
+		a.MessageRetentionPeriod = v
+	case types.AttributeReceiveMessageWaitTimeSeconds:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid ReceiveMessageWaitTimeSeconds: %s", value)
+		}
+		if v < types.MinReceiveMessageWaitTime || v > types.MaxReceiveMessageWaitTime {
+			return fmt.Errorf("ReceiveMessageWaitTimeSeconds must be between %d and %d", types.MinReceiveMessageWaitTime, types.MaxReceiveMessageWaitTime)
+		}
+		a.ReceiveMessageWaitTimeSeconds = v
+	case types.AttributeQueueArn:
+		a.QueueArn = value
+	case types.AttributePolicy:
+		a.Policy = value
+	case types.AttributeRedrivePolicy:
+		rp, err := dlq.ParseRedrivePolicy(value)
+		if err != nil {
+			return fmt.Errorf("invalid RedrivePolicy: %w", err)
+		}
+		if rp.DeadLetterTargetArn == "" {
+			return fmt.Errorf("invalid RedrivePolicy: deadLetterTargetArn is required")
+		}
+		if rp.MaxReceiveCount < 1 || rp.MaxReceiveCount > 1000 {
+			return fmt.Errorf("invalid RedrivePolicy: maxReceiveCount must be between 1 and 1000")
+		}
+		a.RedrivePolicy = value
+	case types.AttributeFifoQueue:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid FifoQueue: %s", value)
+		}
+		a.FifoQueue = v
+	case types.AttributeContentBasedDeduplication:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid ContentBasedDeduplication: %s", value)
+		}
+		a.ContentBasedDeduplication = v
+	case types.AttributeKmsMasterKeyId:
+		a.KmsMasterKeyId = value
+	case types.AttributeKmsDataKeyReusePeriodSeconds:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid KmsDataKeyReusePeriodSeconds: %s", value)
+		}
+		if v < types.MinKmsDataKeyReusePeriodSeconds || v > types.MaxKmsDataKeyReusePeriodSeconds {
+			return fmt.Errorf("KmsDataKeyReusePeriodSeconds must be between %d and %d", types.MinKmsDataKeyReusePeriodSeconds, types.MaxKmsDataKeyReusePeriodSeconds)
+		}
+		a.KmsDataKeyReusePeriodSeconds = v
+	case types.AttributeDeduplicationScope:
+		a.DeduplicationScope = value
+	case types.AttributeFifoThroughputLimit:
+		a.FifoThroughputLimit = value
+	case types.AttributeSqsManagedSseEnabled:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid SqsManagedSseEnabled: %s", value)
+		}
+		a.SqsManagedSseEnabled = v
+	default:
+		return fmt.Errorf("unknown attribute: %s", name)
+	}
+	return nil
 }
