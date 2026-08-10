@@ -4,7 +4,6 @@ common --enable_platform_specific_config
 # Sandbox mounts for temporary directories
 build:linux --sandbox_add_mount_pair=/tmp
 # Zig/lld can garbage-collect protobuf upb start/stop sections needed by exec tools.
-build:linux --linkopt=-Wl,-z,nostart-stop-gc
 build:linux --host_linkopt=-Wl,-z,nostart-stop-gc
 build:macos --sandbox_add_mount_pair=/var/tmp
 build:windows --sandbox_add_mount_pair=C:\Temp
