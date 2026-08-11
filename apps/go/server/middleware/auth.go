@@ -82,7 +82,7 @@ func verifyLegacyQuery(w http.ResponseWriter, r *http.Request, credStore credent
 	if accessKeyID == "" || secretAccessKey == "" {
 		writeAuthError(w, "MissingAuthenticationToken",
 			"Request must contain a valid AWS Access Key ID and Secret Access Key.")
-		log.Warningf("auth: missing credentials for request %s %s", r.Method, r.URL.Path)
+		log.Warningf("missing credentials for request %s %s", r.Method, r.URL.Path)
 		return
 	}
 
@@ -90,14 +90,14 @@ func verifyLegacyQuery(w http.ResponseWriter, r *http.Request, credStore credent
 	if err != nil {
 		writeAuthError(w, "InvalidClientTokenId",
 			"The AWS Access Key Id you provided does not exist in our records.")
-		log.Warningf("auth: invalid access key ID %q for request %s %s", accessKeyID, r.Method, r.URL.Path)
+		log.Warningf("invalid access key ID %q for request %s %s", accessKeyID, r.Method, r.URL.Path)
 		return
 	}
 
 	if cred.SecretAccessKey != secretAccessKey {
 		writeAuthError(w, "SignatureDoesNotMatch",
 			"The request signature we calculated does not match the signature you provided.")
-		log.Warningf("auth: secret mismatch for access key ID %q for request %s %s", accessKeyID, r.Method, r.URL.Path)
+		log.Warningf("secret mismatch for access key ID %q for request %s %s", accessKeyID, r.Method, r.URL.Path)
 		return
 	}
 
@@ -164,7 +164,7 @@ func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.C
 	parts, err := parseSigV4AuthHeader(r.Header.Get("Authorization"))
 	if err != nil {
 		writeAuthError(w, "IncompleteSignature", err.Error())
-		log.Warningf("auth: failed to parse SigV4 header for request %s %s: %v", r.Method, r.URL.Path, err)
+		log.Warningf("failed to parse SigV4 header for request %s %s: %v", r.Method, r.URL.Path, err)
 		return
 	}
 
@@ -173,7 +173,7 @@ func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.C
 	if err != nil {
 		writeAuthError(w, "InvalidClientTokenId",
 			"The AWS Access Key Id you provided does not exist in our records.")
-		log.Warningf("auth: invalid access key ID %q for request %s %s", parts.AccessKeyID, r.Method, r.URL.Path)
+		log.Warningf("invalid access key ID %q for request %s %s", parts.AccessKeyID, r.Method, r.URL.Path)
 		return
 	}
 
@@ -181,7 +181,7 @@ func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.C
 	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxBodySize))
 	if err != nil {
 		writeAuthError(w, "InternalError", "Failed to read request body for signature verification.")
-		log.Errorf("auth: failed to read body for SigV4 verification: %v", err)
+		log.Warningf("failed to read body for SigV4 verification: %v", err)
 		return
 	}
 	// Restore the body so the downstream handler can read it.
@@ -199,7 +199,7 @@ func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.C
 		if payloadHash != actualHash {
 			writeAuthError(w, "XAmzContentSHA256Mismatch",
 				"The provided 'x-amz-content-sha256' header does not match the SHA256 hash of the request body.")
-			log.Warningf("auth: X-Amz-Content-Sha256 mismatch for access key ID %q, request %s %s",
+			log.Warningf("X-Amz-Content-Sha256 mismatch for access key ID %q, request %s %s",
 				parts.AccessKeyID, r.Method, r.URL.Path)
 			return
 		}
@@ -231,7 +231,7 @@ func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.C
 		writeAuthError(w, "SignatureDoesNotMatch",
 			"The request signature we calculated does not match the signature you provided. "+
 				"Check your AWS Secret Access Key and signing method.")
-		log.Warningf("auth: SigV4 signature mismatch for access key ID %q, request %s %s",
+		log.Warningf("SigV4 signature mismatch for access key ID %q, request %s %s",
 			parts.AccessKeyID, r.Method, r.URL.Path)
 		return
 	}

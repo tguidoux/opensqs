@@ -56,10 +56,10 @@ func main() {
 	}
 	log := logger.New("opensqs-server", logger.UncontextualLoggerType, logLevel)
 
-	log.Infof("starting OpenSQS server", map[string]any{
-		"host":         cfg.Server.Host,
-		"port":         cfg.Server.Port,
-		"nodeAddress":  cfg.SQS.NodeAddress,
+	log.Info("starting OpenSQS server", map[string]any{
+		"host":          cfg.Server.Host,
+		"port":          cfg.Server.Port,
+		"nodeAddress":   cfg.SQS.NodeAddress,
 		"accountId":    cfg.SQS.AccountID,
 		"region":       cfg.SQS.Region,
 		"storageType":  cfg.SQS.StorageType,
@@ -132,7 +132,7 @@ func main() {
 		if err != nil {
 			log.Errorf("failed to create startup queue %q: %v", sq.Name, err)
 		} else {
-			log.Infof("created startup queue: %s", sq.Name)
+			log.Infof("created startup queue %q", sq.Name)
 		}
 	}
 
@@ -255,7 +255,7 @@ func main() {
 			err = httpServer.ListenAndServe()
 		}
 		if err != nil && err != http.ErrServerClosed {
-			log.Errorf("server failed to start: %v", err)
+			log.Errorf("failed to start SQS server: %v", err)
 			serverErr <- err
 		}
 	}()
@@ -266,7 +266,7 @@ func main() {
 	select {
 	case <-quit:
 	case err := <-serverErr:
-		log.Errorf("server error: %v", err)
+		log.Errorf("failed to start server: %v", err)
 	}
 
 	log.Info("shutting down server...")
@@ -276,26 +276,26 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Errorf("server forced to shutdown: %v", err)
+		log.Errorf("failed to shutdown SQS server: %v", err)
 	}
 
 	// Shutdown UI server (if running)
 	if uiServer != nil {
 		if err := uiServer.Stop(ctx); err != nil {
-			log.Errorf("UI server shutdown error: %v", err)
+			log.Errorf("failed to shutdown UI server: %v", err)
 		}
 	}
 
 	// Shutdown metrics server (if running)
 	if metricsServer != nil {
 		if err := metricsServer.Stop(ctx); err != nil {
-			log.Errorf("metrics server shutdown error: %v", err)
+			log.Errorf("failed to shutdown metrics server: %v", err)
 		}
 	}
 
 	// Shutdown all queue stores (close databases, release resources)
 	if err := manager.Shutdown(ctx); err != nil {
-		log.Errorf("queue manager shutdown error: %v", err)
+		log.Errorf("failed to shutdown queue manager: %v", err)
 	}
 
 	log.Info("server stopped")
@@ -313,7 +313,7 @@ func startServerable(log logger.LoggerInterface, name string, port int, s interf
 	go func() {
 		log.Infof("starting %s server on :%d", name, port)
 		if err := s.Start(); err != nil && err != http.ErrServerClosed {
-			log.Errorf("%s server error: %v", name, err)
+			log.Errorf("failed to start %s server: %v", name, err)
 		}
 	}()
 	return s

@@ -1,7 +1,6 @@
-package serverbase
-
 // Package serverbase provides a shared HTTP server lifecycle pattern
 // used by the health, metrics, and UI servers to eliminate duplication.
+package serverbase
 
 import (
 	"context"

@@ -407,7 +407,7 @@ type JSONRemovePermissionResponse struct {
 
 // JSONListDeadLetterSourceQueuesResponse is the JSON response for ListDeadLetterSourceQueues.
 type JSONListDeadLetterSourceQueuesResponse struct {
-	QueueURLs []string `json:"queueUrls"`
+	QueueURLs []string `json:"QueueUrls"`
 	RequestID string   `json:"RequestId"`
 }
 

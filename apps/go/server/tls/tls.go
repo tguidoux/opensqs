@@ -27,10 +27,10 @@ func LoadTLSConfig(certFile, keyFile string) (*tls.Config, error) {
 	}
 
 	if certFile == "" {
-		return nil, fmt.Errorf("TLS key file provided but certificate file is missing")
+		return nil, fmt.Errorf("tls key file provided but certificate file is missing")
 	}
 	if keyFile == "" {
-		return nil, fmt.Errorf("TLS certificate file provided but key file is missing")
+		return nil, fmt.Errorf("tls certificate file provided but key file is missing")
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)

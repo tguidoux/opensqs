@@ -161,12 +161,12 @@ func TestGetAWSS3EndpointURL(t *testing.T) {
 		{
 			name:     "LOCAL environment returns local endpoint",
 			env:      environment.LOCAL,
-			expected: config.LOCAL_AWS_S3_ENDPOINT_URL,
+			expected: config.LocalAWSS3EndpointURL,
 		},
 		{
 			name:     "AOOSTAR environment returns aoostar endpoint",
 			env:      environment.AOOSTAR,
-			expected: config.AOOSTAR_AWS_S3_ENDPOINT_URL,
+			expected: config.AoostarAWSS3EndpointURL,
 		},
 		{
 			name:     "STAGING environment returns empty string",
@@ -197,12 +197,12 @@ func TestGetAWSSQSEndpointURL(t *testing.T) {
 		{
 			name:     "LOCAL environment returns local endpoint",
 			env:      environment.LOCAL,
-			expected: config.LOCAL_AWS_SQS_ENDPOINT_URL,
+			expected: config.LocalAWSSQSEndpointURL,
 		},
 		{
 			name:     "AOOSTAR environment returns aoostar endpoint",
 			env:      environment.AOOSTAR,
-			expected: config.AOOSTAR_AWS_SQS_ENDPOINT_URL,
+			expected: config.AoostarAWSSQSEndpointURL,
 		},
 		{
 			name:     "STAGING environment returns empty string",
@@ -233,12 +233,12 @@ func TestGetAWSSSMEndpointURL(t *testing.T) {
 		{
 			name:     "LOCAL environment returns local endpoint",
 			env:      environment.LOCAL,
-			expected: config.LOCAL_AWS_SSM_ENDPOINT_URL,
+			expected: config.LocalAWSSSMEndpointURL,
 		},
 		{
 			name:     "AOOSTAR environment returns aoostar endpoint",
 			env:      environment.AOOSTAR,
-			expected: config.AOOSTAR_AWS_SSM_ENDPOINT_URL,
+			expected: config.AoostarAWSSSMEndpointURL,
 		},
 		{
 			name:     "STAGING environment returns empty string",
@@ -262,11 +262,11 @@ func TestGetAWSSSMEndpointURL(t *testing.T) {
 
 func TestConstants(t *testing.T) {
 	// Test that constants have expected values
-	assert.Equal(t, "http://localhost:9000", config.LOCAL_AWS_S3_ENDPOINT_URL)
-	assert.Equal(t, "http://localhost:9324", config.LOCAL_AWS_SQS_ENDPOINT_URL)
-	assert.Equal(t, "http://localhost:8000", config.LOCAL_AWS_SSM_ENDPOINT_URL)
+	assert.Equal(t, "http://localhost:9000", config.LocalAWSS3EndpointURL)
+	assert.Equal(t, "http://localhost:9324", config.LocalAWSSQSEndpointURL)
+	assert.Equal(t, "http://localhost:8000", config.LocalAWSSSMEndpointURL)
 
-	assert.Equal(t, "http://minio.aoostar.local:9000", config.AOOSTAR_AWS_S3_ENDPOINT_URL)
-	assert.Equal(t, "http://opensqs.aoostar.local:9324", config.AOOSTAR_AWS_SQS_ENDPOINT_URL)
-	assert.Equal(t, "http://ssm.aoostar.local:8000", config.AOOSTAR_AWS_SSM_ENDPOINT_URL)
+	assert.Equal(t, "http://minio.aoostar.local:9000", config.AoostarAWSS3EndpointURL)
+	assert.Equal(t, "http://opensqs.aoostar.local:9324", config.AoostarAWSSQSEndpointURL)
+	assert.Equal(t, "http://ssm.aoostar.local:8000", config.AoostarAWSSSMEndpointURL)
 }

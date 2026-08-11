@@ -64,7 +64,6 @@ func newHandler(manager *queue.QueueManager, credStore credentials.CredentialSto
 type pageData struct {
 	Title          string
 	Queues         []queueListItem
-	Queue          *queueDetailData
 	Error          string
 	Success        string
 	MetricsEnabled bool
@@ -356,7 +355,7 @@ func (h *handler) handleCreateQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.log.Infof("created queue: %s", queueName)
+	h.log.Infof("created queue %q", queueName)
 	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Queue+created", http.StatusSeeOther)
 }
 
@@ -421,10 +420,12 @@ func (h *handler) handleQueueRoutes(w http.ResponseWriter, r *http.Request) {
 func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queueName string) {
 	q, err := h.manager.LookupQueue(queueName)
 	if err != nil {
+		endpointURL := buildEndpointURL(h.manager.NodeAddress())
 		h.renderTemplate(w, "queue.html", queueDetailData{
-			Title: "Queue",
-			Name:  queueName,
-			Error: fmt.Sprintf("Queue not found: %s", queueName),
+			Title:      "Queue",
+			Name:       queueName,
+			Error:      fmt.Sprintf("Queue not found: %s", queueName),
+			CLIEnvVars: buildCLIEnvVars(endpointURL, h.manager.Region(), h.manager.AccountID()),
 		})
 		return
 	}
@@ -487,7 +488,7 @@ func (h *handler) handleDeleteQueue(w http.ResponseWriter, r *http.Request, queu
 		http.Redirect(w, r, "/?error=Failed+to+delete+queue", http.StatusSeeOther)
 		return
 	}
-	h.log.Infof("deleted queue: %s", queueName)
+	h.log.Infof("deleted queue %q", queueName)
 	http.Redirect(w, r, "/?success=Queue+deleted", http.StatusSeeOther)
 }
 
@@ -499,7 +500,7 @@ func (h *handler) handlePurgeQueue(w http.ResponseWriter, r *http.Request, queue
 	}
 	q, err := h.manager.LookupQueue(queueName)
 	if err != nil {
-		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Queue+not+found", http.StatusSeeOther)
+		http.Redirect(w, r, "/?error=Queue+not+found", http.StatusSeeOther)
 		return
 	}
 	if err := q.Store().Purge(r.Context()); err != nil {
@@ -507,7 +508,7 @@ func (h *handler) handlePurgeQueue(w http.ResponseWriter, r *http.Request, queue
 		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Failed+to+purge", http.StatusSeeOther)
 		return
 	}
-	h.log.Infof("purged queue: %s", queueName)
+	h.log.Infof("purged queue %q", queueName)
 	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Queue+purged", http.StatusSeeOther)
 }
 
@@ -560,7 +561,7 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 		return
 	}
 
-	h.log.Infof("sent message to queue: %s", queueName)
+	h.log.Infof("sent message to queue %q", queueName)
 	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Message+sent", http.StatusSeeOther)
 }
 
@@ -583,7 +584,7 @@ func (h *handler) handleDeleteMessage(w http.ResponseWriter, r *http.Request, qu
 		return
 	}
 
-	h.log.Infof("deleted message from queue: %s", queueName)
+	h.log.Infof("deleted message from queue %q", queueName)
 	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Message+deleted", http.StatusSeeOther)
 }
 
@@ -647,10 +648,13 @@ func (h *handler) handleCreateCredential(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	h.log.Infof("created credential: %s (label=%s)", cred.ID, cred.Label)
+	h.log.Infof("created credential %q (label=%s)", cred.ID, cred.Label)
 
 	// Show the credential with its secret (only available at creation time)
-	creds, _ := h.credStore.List()
+	creds, err := h.credStore.List()
+	if err != nil {
+		h.log.Errorf("failed to list credentials: %v", err)
+	}
 	items := make([]credentialDisplay, 0, len(creds))
 	for _, c := range creds {
 		items = append(items, newCredentialDisplay(c, false))
@@ -685,7 +689,7 @@ func (h *handler) handleCredentialRoutes(w http.ResponseWriter, r *http.Request)
 			http.Redirect(w, r, "/credentials?error=Failed+to+delete+credential", http.StatusSeeOther)
 			return
 		}
-		h.log.Infof("deleted credential: %s", credID)
+		h.log.Infof("deleted credential %q", credID)
 		http.Redirect(w, r, "/credentials?success=Credential+deleted", http.StatusSeeOther)
 		return
 	}
@@ -715,7 +719,11 @@ func (h *handler) handleAPIQueueMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	queueName := parts[0]
+	queueName, err := url.PathUnescape(parts[0])
+	if err != nil {
+		writeJSONError(w, "invalid queue name encoding", http.StatusBadRequest)
+		return
+	}
 	q, err := h.manager.LookupQueue(queueName)
 	if err != nil {
 		writeJSONError(w, "queue not found", http.StatusNotFound)
@@ -824,6 +832,10 @@ func buildAttrPairs(attrs *queue.QueueAttributes) []attrPair {
 
 // handleMetrics renders the metrics dashboard page.
 func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if !h.metricsEnabled {
 		http.NotFound(w, r)
 		return
