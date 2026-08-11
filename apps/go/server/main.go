@@ -143,12 +143,12 @@ func main() {
 	}
 
 	// Create the action handler
-	handler := handlers.NewHandler(manager, limits, cfg.Queues.AutoCreate, metricsCollector)
+	handler := handlers.NewHandler(manager, limits, cfg.Queues.AutoCreate, metricsCollector, log)
 
 	// Create the HTTP server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		handleSQSRequest(w, r, handler, log)
+		handleSQSRequest(w, r, handler)
 	})
 
 	// Build middleware chain (order matters: outermost first)

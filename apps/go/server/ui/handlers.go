@@ -193,6 +193,13 @@ func buildEndpointURL(nodeAddress string) string {
 	return "http://" + nodeAddress
 }
 
+// buildCLIEnvVars produces shell export commands for the AWS CLI endpoint,
+// region, and account ID. Used on every page that shows the AWS CLI card.
+func buildCLIEnvVars(endpointURL, region, accountID string) string {
+	return fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
+		endpointURL, region, accountID)
+}
+
 // --- Metrics data models for templates ---
 
 type metricsData struct {
@@ -250,10 +257,9 @@ func (h *handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	endpointURL := buildEndpointURL(h.manager.NodeAddress())
 	data := pageData{
-		Title:  "Queues",
-		Queues: items,
-		CLIEnvVars: fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
-			endpointURL, h.manager.Region(), h.manager.AccountID()),
+		Title:      "Queues",
+		Queues:     items,
+		CLIEnvVars: buildCLIEnvVars(endpointURL, h.manager.Region(), h.manager.AccountID()),
 	}
 	if e := r.URL.Query().Get("error"); e != "" {
 		data.Error = e
@@ -272,9 +278,8 @@ func (h *handler) handleCreateQueueForm(w http.ResponseWriter, r *http.Request) 
 	}
 	endpointURL := buildEndpointURL(h.manager.NodeAddress())
 	h.renderTemplate(w, "create_queue.html", pageData{
-		Title: "Create Queue",
-		CLIEnvVars: fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
-			endpointURL, h.manager.Region(), h.manager.AccountID()),
+		Title:      "Create Queue",
+		CLIEnvVars: buildCLIEnvVars(endpointURL, h.manager.Region(), h.manager.AccountID()),
 	})
 }
 
@@ -455,8 +460,7 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 		Region:      h.manager.Region(),
 		AccountID:   h.manager.AccountID(),
 	}
-	data.CLIEnvVars = fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
-		data.EndpointURL, data.Region, data.AccountID)
+	data.CLIEnvVars = buildCLIEnvVars(data.EndpointURL, data.Region, data.AccountID)
 	data.CLISendCommand = fmt.Sprintf("aws sqs send-message --queue-url \"%s\" --message-body \"hello\"", data.URL)
 	data.CLIRecvCommand = fmt.Sprintf("aws sqs receive-message --queue-url \"%s\"", data.URL)
 
@@ -480,7 +484,7 @@ func (h *handler) handleDeleteQueue(w http.ResponseWriter, r *http.Request, queu
 	}
 	if err := h.manager.DeleteQueue(queueName); err != nil {
 		h.log.Errorf("failed to delete queue %q: %v", queueName, err)
-		http.Redirect(w, r, "/?error="+url.QueryEscape(fmt.Sprintf("Failed to delete queue %s", queueName)), http.StatusSeeOther)
+		http.Redirect(w, r, "/?error=Failed+to+delete+queue", http.StatusSeeOther)
 		return
 	}
 	h.log.Infof("deleted queue: %s", queueName)
@@ -828,6 +832,7 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		Title:          "Metrics",
 		MetricsEnabled: true,
 		Metrics:        collectMetrics(),
+		CLIEnvVars:     buildCLIEnvVars(buildEndpointURL(h.manager.NodeAddress()), h.manager.Region(), h.manager.AccountID()),
 	}
 	h.renderTemplate(w, "metrics.html", data)
 }

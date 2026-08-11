@@ -22,6 +22,7 @@ opensqs_go_library(
         "//apps/go/server/metrics:go_default_library",
         "//apps/go/server/protocol:go_default_library",
         "//pkgs/v1/id:go_default_library",
+        "//pkgs/v1/logger:go_default_library",
         "//pkgs/v1/queue:go_default_library",
         "//pkgs/v1/queue/dlq:go_default_library",
         "//pkgs/v1/queue/types:go_default_library",

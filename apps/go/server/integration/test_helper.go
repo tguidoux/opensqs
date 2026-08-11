@@ -40,7 +40,8 @@ func newTestServer(t *testing.T) *testServer {
 	}
 	manager := queue.NewQueueManager("localhost:0", "123456789012", "us-east-1", []byte("test-secret"), factory)
 	limits := queue.NewLimits(queue.StrictMode)
-	handler := handlers.NewHandler(manager, limits, true, nil) // autoCreate=true
+	log := logger.New("integration-test", logger.UncontextualLoggerType)
+	handler := handlers.NewHandler(manager, limits, true, nil, log) // autoCreate=true
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +49,6 @@ func newTestServer(t *testing.T) *testServer {
 	})
 
 	// Wrap with request logging middleware for realistic testing
-	log := logger.New("integration-test", logger.UncontextualLoggerType)
 	wrappedHandler := middleware.Chain(
 		middleware.RequestLogger(log),
 	)(mux)

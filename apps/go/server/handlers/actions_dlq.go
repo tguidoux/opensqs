@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"log"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
@@ -29,7 +28,7 @@ func (h *Handler) handleListDeadLetterSourceQueues(ctx context.Context, req Requ
 		}
 		rp, err := dlq.ParseRedrivePolicy(rpStr)
 		if err != nil {
-			log.Printf("failed to parse redrive policy for queue %q: %v", q.Name(), err)
+			h.log.Errorf("failed to parse redrive policy for queue %q: %v", q.Name(), err)
 			continue
 		}
 		if rp.DeadLetterTargetArn == dlqArn {

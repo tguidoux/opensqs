@@ -6,7 +6,6 @@ import (
 
 	"github.com/tguidoux/opensqs/apps/go/server/handlers"
 	"github.com/tguidoux/opensqs/apps/go/server/protocol"
-	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
@@ -17,7 +16,7 @@ const maxRequestBodySize = 1 << 20 // 1 MiB
 // handleSQSRequest processes an incoming SQS API request.
 // It detects the protocol (Query or JSON), parses the request,
 // dispatches to the action handler, and writes the response.
-func handleSQSRequest(w http.ResponseWriter, r *http.Request, handler *handlers.Handler, log logger.LoggerInterface) {
+func handleSQSRequest(w http.ResponseWriter, r *http.Request, handler *handlers.Handler) {
 	// Detect protocol
 	protoType, targetHeader := handlers.DetectProtocol(r)
 

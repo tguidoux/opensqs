@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tguidoux/opensqs/apps/go/server/handlers"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
@@ -20,7 +21,7 @@ func newAutoCreateTestHandler() *handlers.Handler {
 	}
 	manager := queue.NewQueueManager("localhost:9324", "123456789012", "us-east-1", []byte("test-secret"), factory)
 	limits := queue.NewLimits(queue.StrictMode)
-	return handlers.NewHandler(manager, limits, true, nil)
+	return handlers.NewHandler(manager, limits, true, nil, logger.New("test", logger.UncontextualLoggerType))
 }
 
 // ---------------------------------------------------------------------------

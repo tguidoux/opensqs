@@ -2,10 +2,10 @@ package handlers
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/tguidoux/opensqs/apps/go/server/metrics"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -146,11 +146,12 @@ type Handler struct {
 	autoCreate  bool
 	moveTaskMgr *dlq.MoveTaskManager
 	metrics     *metrics.Collector
+	log         logger.LoggerInterface
 }
 
 // NewHandler creates a new Handler with the given queue manager, limits, and auto-create setting.
 // If metricsCollector is non-nil, API request metrics are recorded.
-func NewHandler(manager *queue.QueueManager, limits *queue.Limits, autoCreate bool, metricsCollector *metrics.Collector) *Handler {
+func NewHandler(manager *queue.QueueManager, limits *queue.Limits, autoCreate bool, metricsCollector *metrics.Collector, log logger.LoggerInterface) *Handler {
 	lookupFn := func(arn string) (dlq.QueueRef, error) {
 		return manager.LookupQueueByArn(arn)
 	}
@@ -168,6 +169,7 @@ func NewHandler(manager *queue.QueueManager, limits *queue.Limits, autoCreate bo
 		autoCreate:  autoCreate,
 		moveTaskMgr: dlq.NewMoveTaskManager(lookupFn, listFn),
 		metrics:     metricsCollector,
+		log:         log,
 	}
 }
 
@@ -255,7 +257,7 @@ func (h *Handler) resolveQueue(queueURL string) (*queue.Queue, error) {
 				attrs := queue.NewDefaultQueueAttributes()
 				q, createErr := h.manager.CreateQueue(name, attrs)
 				if createErr != nil {
-					log.Printf("auto-create failed for queue %q: %v", name, createErr)
+					h.log.Errorf("failed to auto-create queue %q: %v", name, createErr)
 				} else {
 					return q, nil
 				}
