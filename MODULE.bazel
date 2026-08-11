@@ -90,7 +90,7 @@ bazel_dep(name = "rules_pkg", version = "1.2.0")
 # CC toolchains to be registered for packaging OCI images, so we will cheat a
 # little using zig/hermetic_cc_toolchain to provide cross-compilation toolchains for
 # packaging OCI images.
-bazel_dep(name = "hermetic_cc_toolchain", version = "4.1.0", repo_name = "hermetic_cc_toolchain")
+bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0", repo_name = "hermetic_cc_toolchain")
 
 toolchains = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
 use_repo(toolchains, "zig_sdk")
