@@ -10,8 +10,8 @@ sqs:
   nodeAddress: "localhost:9324"
   accountId: "123456789012"
   region: "us-east-1"
-  storageType: "memory"
-  # sqlitePath: "/data/opensqs.db"  # Uncomment and set storageType to "sqlite" for SQLite persistence
+  storageType: "sqlite"  # Use "memory", "sqlite", or "badger "
+  sqlitePath: "/tmp/opensqs.db"  # Uncomment and set storageType to "sqlite" for SQLite persistence
   # badgerPath: "/data/badger"      # Uncomment and set storageType to "badger" for BadgerDB persistence
   strictLimits: true
   # Server secret for signing receipt handles.
@@ -58,6 +58,13 @@ rateLimit:
   requestsPerSecond: 1000
   burst: 100
   perQueue: false
+
+# Credential-based request authentication.
+# When enabled (default), SQS API requests must include a valid
+# AccessKeyId and SecretAccessKey created via the Credentials UI.
+# Set to false to allow unauthenticated requests.
+auth:
+  enabled: true
 
 # Optional: queues created at startup
 queues:

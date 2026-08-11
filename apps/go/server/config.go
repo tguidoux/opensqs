@@ -29,6 +29,8 @@ type ServerConfig struct {
 	RequestLogging RequestLoggingConfig `yaml:"requestLogging"`
 	// RateLimit controls per-queue and global rate limiting.
 	RateLimit RateLimitConfig `yaml:"rateLimit"`
+	// Auth controls credential-based request authentication.
+	Auth AuthConfig `yaml:"auth"`
 }
 
 // QueuesConfig holds queue startup and auto-create configuration.
@@ -158,6 +160,23 @@ type RateLimitConfig struct {
 	Burst int `yaml:"burst"`
 	// PerQueue controls whether rate limiting is per-queue (true) or global (false).
 	PerQueue bool `yaml:"perQueue"`
+}
+
+// AuthConfig controls credential-based request authentication.
+// When enabled, incoming SQS API requests must include a valid
+// AccessKeyId and SecretAccessKey matching a credential in the store.
+type AuthConfig struct {
+	// Enabled controls whether credential authentication is active.
+	// Defaults to true when omitted (enabled by default).
+	Enabled *bool `yaml:"enabled"`
+}
+
+// IsEnabled returns true unless explicitly set to false.
+func (c AuthConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
 }
 
 // Validate implements config.ConfigI[ServerConfig].

@@ -1,4 +1,3 @@
-{{template "layout" .}}
 {{define "content"}}
 <h1>Queues</h1>
 
@@ -50,4 +49,14 @@
 {{else}}
 <p class="empty-state">No queues found. <a href="/queues/new">Create one</a>.</p>
 {{end}}
+
+<div class="card">
+    <h2>AWS CLI</h2>
+    <p class="hint">Set these environment variables so the AWS CLI talks to this OpenSQS instance.</p>
+    <div class="form-group">
+        <label>Environment Variables</label>
+        <pre class="export-block" id="cli-env-vars">{{.CLIEnvVars}}</pre>
+        <button type="button" class="btn btn-primary btn-copy" onclick="copyToClipboard('cli-env-vars', this)">Copy</button>
+    </div>
+</div>
 {{end}}

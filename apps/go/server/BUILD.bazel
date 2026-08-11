@@ -26,6 +26,7 @@ opensqs_go_library(
         "//pkgs/v1/queue:go_default_library",
         "//pkgs/v1/queue/store:go_default_library",
         "//pkgs/v1/queue/store/badger:go_default_library",
+        "//pkgs/v1/queue/store/credentials:go_default_library",
         "//pkgs/v1/queue/store/memory:go_default_library",
         "//pkgs/v1/queue/store/sqlite:go_default_library",
         "//pkgs/v1/queue/types:go_default_library",

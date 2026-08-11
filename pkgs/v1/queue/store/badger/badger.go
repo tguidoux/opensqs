@@ -42,6 +42,12 @@ func (b *BadgerDB) Close() error {
 	return b.db.Close()
 }
 
+// DB returns the underlying *badger.DB instance.
+// This allows other stores (e.g. credentials) to share the same database.
+func (b *BadgerDB) DB() *badger.DB {
+	return b.db
+}
+
 // BadgerStore is a BadgerDB-backed implementation of the Store interface.
 // It uses lazy visibility timeout evaluation (no goroutines/timers).
 // Messages become visible when their visible_at timestamp is checked

@@ -197,6 +197,42 @@ function doRefresh() {
             })
             .catch(() => {});
     }
+
+    // Auto-refresh credential table (secrets are never included in the API response)
+    const credTable = document.getElementById('credential-table');
+    if (credTable && !document.querySelector('.credential-created-card')) {
+        fetch('/api/credentials')
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(creds => {
+                const tbody = credTable.querySelector('tbody');
+                if (!tbody) return;
+                if (!creds || creds.length === 0) {
+                    tbody.innerHTML = '';
+                    return;
+                }
+                tbody.innerHTML = '';
+                creds.forEach(c => {
+                    const tr = document.createElement('tr');
+                    const encodedID = encodeURIComponent(c.ID);
+                    tr.innerHTML = `
+                        <td data-label="Label">${escapeHtml(c.Label)}</td>
+                        <td data-label="Access Key ID" class="mono">${escapeHtml(c.AccessKeyID)}</td>
+                        <td data-label="Region">${escapeHtml(c.Region)}</td>
+                        <td data-label="Account ID">${escapeHtml(c.AccountID)}</td>
+                        <td data-label="Created">${escapeHtml(c.CreatedAt)}</td>
+                        <td data-label="Actions" class="action-cell">
+                            <form method="POST" action="/credentials/${encodedID}/delete" style="display:inline">
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    `;
+                    const deleteForm = tr.querySelector('form');
+                    if (deleteForm) attachConfirmOnSubmit(deleteForm, 'Delete credential ' + c.Label + '? This cannot be undone.');
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(() => {});
+    }
 }
 
 function refreshMetricsTable(tableId, items, renderRow, colspan) {
@@ -223,9 +259,27 @@ document.getElementById('refresh-toggle')?.addEventListener('click', function() 
 });
 
 updateRefreshUI();
-// Only auto-start refresh on pages with dynamic content (queue/message tables).
-if (document.getElementById('queue-table') || document.getElementById('message-table')) {
+// Only auto-start refresh on pages with dynamic content (queue/message/credential tables).
+if (document.getElementById('queue-table') || document.getElementById('message-table') || document.getElementById('credential-table')) {
     startRefresh();
 }
+
+// --- Global helpers for inline onclick handlers ---
+
+// copyToClipboard copies text from an element and shows feedback on the button.
+window.copyToClipboard = function(elementId, btn) {
+    const text = document.getElementById(elementId).textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = original; }, 2000);
+    });
+};
+
+// toggleCreateForm shows/hides the create credential form.
+window.toggleCreateForm = function() {
+    const form = document.getElementById('create-form');
+    if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+};
 
 })(); // end IIFE

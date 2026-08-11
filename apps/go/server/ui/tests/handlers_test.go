@@ -13,6 +13,7 @@ import (
 	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/credentials"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
 )
 
@@ -23,14 +24,18 @@ func newTestManager() *queue.QueueManager {
 	return queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)
 }
 
+func newTestCredStore() credentials.CredentialStore {
+	return credentials.NewMemoryCredentialStore()
+}
+
 func newTestServer() *ui.Server {
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	return ui.NewServer(0, newTestManager(), log, false, nil)
+	return ui.NewServer(0, newTestManager(), newTestCredStore(), log, false, nil)
 }
 
 func newTestServerWithMetrics() *ui.Server {
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	return ui.NewServer(0, newTestManager(), log, true, nil)
+	return ui.NewServer(0, newTestManager(), newTestCredStore(), log, true, nil)
 }
 
 func TestIndexPageEmptyQueues(t *testing.T) {
@@ -49,7 +54,7 @@ func TestIndexPageWithQueue(t *testing.T) {
 	// Create a queue via the manager
 	manager := newTestManager()
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	srv = ui.NewServer(0, manager, log, false, nil)
+	srv = ui.NewServer(0, manager, newTestCredStore(), log, false, nil)
 
 	_, err := manager.CreateQueue("test-queue", nil)
 	require.NoError(t, err)
@@ -121,7 +126,7 @@ func TestCreateFifoQueueMissingSuffix(t *testing.T) {
 func TestQueueDetailPage(t *testing.T) {
 	manager := newTestManager()
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	srv := ui.NewServer(0, manager, log, false, nil)
+	srv := ui.NewServer(0, manager, newTestCredStore(), log, false, nil)
 
 	_, err := manager.CreateQueue("detail-queue", nil)
 	require.NoError(t, err)
@@ -151,7 +156,7 @@ func TestQueueDetailNotFound(t *testing.T) {
 func TestDeleteQueuePOST(t *testing.T) {
 	manager := newTestManager()
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	srv := ui.NewServer(0, manager, log, false, nil)
+	srv := ui.NewServer(0, manager, newTestCredStore(), log, false, nil)
 
 	_, err := manager.CreateQueue("to-delete", nil)
 	require.NoError(t, err)
@@ -173,7 +178,7 @@ func TestDeleteQueuePOST(t *testing.T) {
 func TestPurgeQueuePOST(t *testing.T) {
 	manager := newTestManager()
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	srv := ui.NewServer(0, manager, log, false, nil)
+	srv := ui.NewServer(0, manager, newTestCredStore(), log, false, nil)
 
 	_, err := manager.CreateQueue("to-purge", nil)
 	require.NoError(t, err)
@@ -207,7 +212,7 @@ func TestAPIQueuesEmpty(t *testing.T) {
 func TestAPIQueuesWithData(t *testing.T) {
 	manager := newTestManager()
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	srv := ui.NewServer(0, manager, log, false, nil)
+	srv := ui.NewServer(0, manager, newTestCredStore(), log, false, nil)
 
 	_, err := manager.CreateQueue("api-queue", nil)
 	require.NoError(t, err)
@@ -229,7 +234,7 @@ func TestAPIQueuesWithData(t *testing.T) {
 func TestAPIQueueMessages(t *testing.T) {
 	manager := newTestManager()
 	log := logger.New("ui-test", logger.UncontextualLoggerType)
-	srv := ui.NewServer(0, manager, log, false, nil)
+	srv := ui.NewServer(0, manager, newTestCredStore(), log, false, nil)
 
 	_, err := manager.CreateQueue("msg-queue", nil)
 	require.NoError(t, err)
@@ -352,4 +357,134 @@ func TestAPIMetricsEnabled(t *testing.T) {
 	// Should have metrics fields
 	assert.Contains(t, data, "APIRequests")
 	assert.Contains(t, data, "QueueSizes")
+}
+
+// --- Credential tests ---
+
+func TestCredentialsPageEmpty(t *testing.T) {
+	srv := newTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/credentials", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "No credentials found")
+}
+
+func TestCredentialsPageHasNavLink(t *testing.T) {
+	srv := newTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `href="/credentials"`)
+	assert.Contains(t, w.Body.String(), "Credentials")
+}
+
+func TestCreateCredentialPOST(t *testing.T) {
+	srv := newTestServer()
+	form := "label=test-cred&region=us-west-2&accountId=999999999999"
+	req := httptest.NewRequest(http.MethodPost, "/credentials/create", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://example.com")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Credential Created")
+	assert.Contains(t, body, "test-cred")
+	assert.Contains(t, body, "us-west-2")
+	assert.Contains(t, body, "999999999999")
+	assert.Contains(t, body, "AKIA")
+	assert.Contains(t, body, "export AWS_ACCESS_KEY_ID")
+	assert.Contains(t, body, "export AWS_SECRET_ACCESS_KEY")
+}
+
+func TestCreateCredentialDefaultsRegionAndAccount(t *testing.T) {
+	srv := newTestServer()
+	form := "label=defaults-test"
+	req := httptest.NewRequest(http.MethodPost, "/credentials/create", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://example.com")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	// Should default to the manager's region and account ID
+	assert.Contains(t, body, "us-east-1")
+	assert.Contains(t, body, "000000000000")
+}
+
+func TestDeleteCredentialPOST(t *testing.T) {
+	credStore := newTestCredStore()
+	manager := newTestManager()
+	log := logger.New("ui-test", logger.UncontextualLoggerType)
+	srv := ui.NewServer(0, manager, credStore, log, false, nil)
+
+	// Create a credential first
+	cred, err := credStore.Create("to-delete", "us-east-1", "123456789012")
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/credentials/"+cred.ID+"/delete", nil)
+	req.Header.Set("Origin", "http://example.com")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusSeeOther, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "/credentials?success=Credential+deleted")
+
+	// Verify credential is gone
+	_, err = credStore.Get(cred.ID)
+	assert.Error(t, err)
+}
+
+func TestAPICredentialsEmpty(t *testing.T) {
+	srv := newTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/credentials", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var items []map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &items)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+}
+
+func TestAPICredentialsWithData(t *testing.T) {
+	credStore := newTestCredStore()
+	manager := newTestManager()
+	log := logger.New("ui-test", logger.UncontextualLoggerType)
+	srv := ui.NewServer(0, manager, credStore, log, false, nil)
+
+	_, err := credStore.Create("api-test", "eu-west-1", "555555555555")
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/credentials", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var items []map[string]interface{}
+	err = json.Unmarshal(w.Body.Bytes(), &items)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "api-test", items[0]["Label"])
+	assert.Equal(t, "eu-west-1", items[0]["Region"])
+	// Secret should NOT be in the API response (empty string, not the actual secret)
+	secret, _ := items[0]["SecretAccessKey"].(string)
+	assert.Empty(t, secret)
 }

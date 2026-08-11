@@ -3,6 +3,7 @@ package metrics
 import (
 	"crypto/tls"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tguidoux/opensqs/apps/go/server/serverbase"
@@ -21,6 +22,6 @@ func NewServer(port int, tlsCfg *tls.Config) *Server {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	return &Server{
-		Server: serverbase.New(port, mux, tlsCfg, 10, 10, 60),
+		Server: serverbase.New(port, mux, tlsCfg, 10*time.Second, 10*time.Second, 60*time.Second),
 	}
 }

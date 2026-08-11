@@ -24,6 +24,7 @@ import (
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/badger"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/credentials"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/sqlite"
 )
@@ -75,6 +76,7 @@ func main() {
 
 	// Create store factory (memory by default, SQLite or BadgerDB when configured)
 	var storeFactory store.StoreFactory
+	var credStore credentials.CredentialStore
 
 	switch {
 	case cfg.SQS.StorageType == "sqlite" && cfg.SQS.SQLitePath != "":
@@ -90,6 +92,11 @@ func main() {
 		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
 			return sqlite.NewSQLiteStore(db, queueName, visibilityTimeout, serverSecret, sc)
 		}
+		credStore, err = credentials.NewSQLiteCredentialStore(db)
+		if err != nil {
+			db.Close()
+			log.Fatalf("failed to create SQLite credential store: %v", err)
+		}
 		defer db.Close()
 
 	case cfg.SQS.StorageType == "badger" && cfg.SQS.BadgerPath != "":
@@ -100,12 +107,14 @@ func main() {
 		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
 			return badger.NewBadgerStore(db, queueName, visibilityTimeout, serverSecret, sc)
 		}
+		credStore = credentials.NewBadgerCredentialStore(db.DB())
 		defer db.Close()
 
 	default:
 		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
 			return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, sc), nil
 		}
+		credStore = credentials.NewMemoryCredentialStore()
 	}
 
 	manager := queue.NewQueueManager(
@@ -146,6 +155,12 @@ func main() {
 	var middlewares []middleware.Middleware
 	if cfg.RequestLogging.Enabled {
 		middlewares = append(middlewares, middleware.RequestLogger(log))
+	}
+	if cfg.Auth.IsEnabled() {
+		middlewares = append(middlewares, middleware.Auth(credStore, log))
+		log.Info("credential authentication enabled")
+	} else {
+		log.Info("credential authentication disabled")
 	}
 	if cfg.RateLimit.Enabled {
 		if cfg.RateLimit.PerQueue {
@@ -204,7 +219,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to load UI server TLS config: %v", err)
 		}
-		uiServer = ui.NewServer(cfg.UI.Port, manager, log, cfg.Metrics.Enabled, uiTLS)
+		uiServer = ui.NewServer(cfg.UI.Port, manager, credStore, log, cfg.Metrics.Enabled, uiTLS)
 		if uiTLS != nil {
 			uiServer.SetCertFiles(cfg.UI.TLS.CertFile, cfg.UI.TLS.KeyFile)
 		}
@@ -264,6 +279,20 @@ func main() {
 		log.Errorf("server forced to shutdown: %v", err)
 	}
 
+	// Shutdown UI server (if running)
+	if uiServer != nil {
+		if err := uiServer.Stop(ctx); err != nil {
+			log.Errorf("UI server shutdown error: %v", err)
+		}
+	}
+
+	// Shutdown metrics server (if running)
+	if metricsServer != nil {
+		if err := metricsServer.Stop(ctx); err != nil {
+			log.Errorf("metrics server shutdown error: %v", err)
+		}
+	}
+
 	// Shutdown all queue stores (close databases, release resources)
 	if err := manager.Shutdown(ctx); err != nil {
 		log.Errorf("queue manager shutdown error: %v", err)
@@ -272,22 +301,20 @@ func main() {
 	log.Info("server stopped")
 }
 
-// startServerable starts a server in a goroutine and registers a deferred
-// graceful shutdown. It eliminates the duplicated start/stop lifecycle code
-// that was repeated for health, UI, and metrics servers.
+// startServerable starts a server in a goroutine and returns it so the caller
+// can shut it down during the graceful shutdown sequence.
 func startServerable(log logger.LoggerInterface, name string, port int, s interface {
 	Start() error
 	Stop(context.Context) error
-}) {
+}) interface {
+	Start() error
+	Stop(context.Context) error
+} {
 	go func() {
 		log.Infof("starting %s server on :%d", name, port)
 		if err := s.Start(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("%s server error: %v", name, err)
 		}
 	}()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = s.Stop(ctx)
-	}()
+	return s
 }

@@ -595,3 +595,41 @@ details summary {
         border-radius: 10px;
     }
 }
+
+/* ---- Credential styles ---- */
+.credential-created-card {
+    border: 2px solid var(--success);
+    margin-bottom: 1.5rem;
+}
+
+.credential-created-card h2 {
+    margin-top: 0;
+    color: var(--success);
+}
+
+.warning-text {
+    color: var(--warning);
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.export-block {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+    margin-bottom: 0.5rem;
+}
+
+.btn-copy {
+    margin-top: 0.25rem;
+}
+
+.credential-form-card {
+    margin-bottom: 1.5rem;
+}

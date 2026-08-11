@@ -14,6 +14,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/credentials"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
@@ -34,7 +35,7 @@ func init() {
 		panic(fmt.Sprintf("failed to read layout template: %v", err))
 	}
 
-	pages := []string{"index.html", "queue.html", "create_queue.html", "metrics.html"}
+	pages := []string{"index.html", "queue.html", "create_queue.html", "credentials.html", "metrics.html"}
 	templates = make(map[string]*template.Template, len(pages))
 	for _, page := range pages {
 		pageBytes, err := templatesFS.ReadFile("templates/" + page)
@@ -50,12 +51,13 @@ func init() {
 // handler holds dependencies for UI HTTP handlers.
 type handler struct {
 	manager        *queue.QueueManager
+	credStore      credentials.CredentialStore
 	log            logger.LoggerInterface
 	metricsEnabled bool
 }
 
-func newHandler(manager *queue.QueueManager, log logger.LoggerInterface, metricsEnabled bool) *handler {
-	return &handler{manager: manager, log: log, metricsEnabled: metricsEnabled}
+func newHandler(manager *queue.QueueManager, credStore credentials.CredentialStore, log logger.LoggerInterface, metricsEnabled bool) *handler {
+	return &handler{manager: manager, credStore: credStore, log: log, metricsEnabled: metricsEnabled}
 }
 
 // pageData is the base data passed to every template.
@@ -67,6 +69,9 @@ type pageData struct {
 	Success        string
 	MetricsEnabled bool
 	Metrics        *metricsData
+	Credentials    []credentialDisplay
+	CreatedCred    *credentialDisplay
+	CLIEnvVars     string
 }
 
 // --- Data models for templates ---
@@ -95,6 +100,12 @@ type queueDetailData struct {
 	Error          string
 	Success        string
 	MetricsEnabled bool
+	EndpointURL    string
+	Region         string
+	AccountID      string
+	CLIEnvVars     string
+	CLISendCommand string
+	CLIRecvCommand string
 }
 
 type attrPair struct {
@@ -131,6 +142,55 @@ func newMessageDisplay(m *types.Message) messageDisplay {
 		ReceiveCount:  m.ApproximateReceiveCount,
 		SentTimestamp: m.SentTimestamp.Format("2006-01-02 15:04:05"),
 	}
+}
+
+// --- Credential data models ---
+
+// credentialDisplay is the view-model for a credential in templates.
+// SecretAccessKey is only populated when the credential was just created.
+type credentialDisplay struct {
+	ID              string
+	Label           string
+	AccessKeyID     string
+	SecretAccessKey string
+	Region          string
+	AccountID       string
+	CreatedAt       string
+	ExportCommands  string
+}
+
+// newCredentialDisplay builds a credentialDisplay from a Credential.
+// includeSecret controls whether the secret access key is included.
+func newCredentialDisplay(c *credentials.Credential, includeSecret bool) credentialDisplay {
+	d := credentialDisplay{
+		ID:          c.ID,
+		Label:       c.Label,
+		AccessKeyID: c.AccessKeyID,
+		Region:      c.Region,
+		AccountID:   c.AccountID,
+		CreatedAt:   c.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+	if includeSecret {
+		d.SecretAccessKey = c.SecretAccessKey
+		d.ExportCommands = buildExportCommands(c)
+	}
+	return d
+}
+
+// buildExportCommands produces shell export commands for a credential.
+func buildExportCommands(c *credentials.Credential) string {
+	return fmt.Sprintf("export AWS_ACCESS_KEY_ID=\"%s\"\nexport AWS_SECRET_ACCESS_KEY=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
+		c.AccessKeyID, c.SecretAccessKey, c.Region, c.AccountID)
+}
+
+// buildEndpointURL converts a node address like "localhost:9324" into a
+// full URL with the http scheme (https when the port is 443 or the address
+// already contains a scheme).
+func buildEndpointURL(nodeAddress string) string {
+	if strings.HasPrefix(nodeAddress, "http://") || strings.HasPrefix(nodeAddress, "https://") {
+		return nodeAddress
+	}
+	return "http://" + nodeAddress
 }
 
 // --- Metrics data models for templates ---
@@ -188,9 +248,12 @@ func (h *handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		items = append(items, newQueueListItem(q, h.manager))
 	}
 
+	endpointURL := buildEndpointURL(h.manager.NodeAddress())
 	data := pageData{
 		Title:  "Queues",
 		Queues: items,
+		CLIEnvVars: fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
+			endpointURL, h.manager.Region(), h.manager.AccountID()),
 	}
 	if e := r.URL.Query().Get("error"); e != "" {
 		data.Error = e
@@ -207,7 +270,12 @@ func (h *handler) handleCreateQueueForm(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	h.renderTemplate(w, "create_queue.html", pageData{Title: "Create Queue"})
+	endpointURL := buildEndpointURL(h.manager.NodeAddress())
+	h.renderTemplate(w, "create_queue.html", pageData{
+		Title: "Create Queue",
+		CLIEnvVars: fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
+			endpointURL, h.manager.Region(), h.manager.AccountID()),
+	})
 }
 
 // handleCreateQueue handles POST /queues/create.
@@ -372,18 +440,25 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 	}
 
 	data := queueDetailData{
-		Title:     "Queue: " + q.Name(),
-		Name:      q.Name(),
-		IsFifo:    q.IsFifo(),
-		URL:       q.URL(h.manager.NodeAddress(), h.manager.AccountID()),
-		ARN:       arn,
-		Attrs:     attrPairs,
-		Tags:      q.Tags(),
-		Available: q.ApproximateNumberOfMessages(),
-		InFlight:  q.ApproximateNumberOfMessagesNotVisible(),
-		Delayed:   q.ApproximateNumberOfMessagesDelayed(),
-		Messages:  msgDisplays,
+		Title:       "Queue: " + q.Name(),
+		Name:        q.Name(),
+		IsFifo:      q.IsFifo(),
+		URL:         q.URL(h.manager.NodeAddress(), h.manager.AccountID()),
+		ARN:         arn,
+		Attrs:       attrPairs,
+		Tags:        q.Tags(),
+		Available:   q.ApproximateNumberOfMessages(),
+		InFlight:    q.ApproximateNumberOfMessagesNotVisible(),
+		Delayed:     q.ApproximateNumberOfMessagesDelayed(),
+		Messages:    msgDisplays,
+		EndpointURL: buildEndpointURL(h.manager.NodeAddress()),
+		Region:      h.manager.Region(),
+		AccountID:   h.manager.AccountID(),
 	}
+	data.CLIEnvVars = fmt.Sprintf("export AWS_ENDPOINT_URL=\"%s\"\nexport AWS_DEFAULT_REGION=\"%s\"\nexport AWS_ACCOUNT_ID=\"%s\"",
+		data.EndpointURL, data.Region, data.AccountID)
+	data.CLISendCommand = fmt.Sprintf("aws sqs send-message --queue-url \"%s\" --message-body \"hello\"", data.URL)
+	data.CLIRecvCommand = fmt.Sprintf("aws sqs receive-message --queue-url \"%s\"", data.URL)
 
 	// Check for flash messages from redirect
 	flashQuery := r.URL.Query()
@@ -503,6 +578,112 @@ func (h *handler) handleDeleteMessage(w http.ResponseWriter, r *http.Request, qu
 	http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?success=Message+deleted", http.StatusSeeOther)
 }
 
+// --- Credential handlers ---
+
+// handleCredentials renders the credentials list page.
+func (h *handler) handleCredentials(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	creds, err := h.credStore.List()
+	if err != nil {
+		h.log.Errorf("failed to list credentials: %v", err)
+	}
+
+	items := make([]credentialDisplay, 0, len(creds))
+	for _, c := range creds {
+		items = append(items, newCredentialDisplay(c, false))
+	}
+
+	data := pageData{
+		Title:       "Credentials",
+		Credentials: items,
+	}
+	if e := r.URL.Query().Get("error"); e != "" {
+		data.Error = e
+	}
+	if s := r.URL.Query().Get("success"); s != "" {
+		data.Success = s
+	}
+	h.renderTemplate(w, "credentials.html", data)
+}
+
+// handleCreateCredential handles POST /credentials/create.
+func (h *handler) handleCreateCredential(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/credentials?error=Invalid+form+data", http.StatusSeeOther)
+		return
+	}
+
+	label := r.FormValue("label")
+	region := r.FormValue("region")
+	if region == "" {
+		region = h.manager.Region()
+	}
+	accountID := r.FormValue("accountId")
+	if accountID == "" {
+		accountID = h.manager.AccountID()
+	}
+
+	cred, err := h.credStore.Create(label, region, accountID)
+	if err != nil {
+		h.log.Errorf("failed to create credential: %v", err)
+		http.Redirect(w, r, "/credentials?error=Failed+to+create+credential", http.StatusSeeOther)
+		return
+	}
+
+	h.log.Infof("created credential: %s (label=%s)", cred.ID, cred.Label)
+
+	// Show the credential with its secret (only available at creation time)
+	creds, _ := h.credStore.List()
+	items := make([]credentialDisplay, 0, len(creds))
+	for _, c := range creds {
+		items = append(items, newCredentialDisplay(c, false))
+	}
+
+	data := pageData{
+		Title:       "Credentials",
+		Credentials: items,
+		Success:     "Credential created. Copy your secret key now — it won't be shown again.",
+		CreatedCred: toPtr(newCredentialDisplay(cred, true)),
+	}
+	h.renderTemplate(w, "credentials.html", data)
+}
+
+// handleCredentialRoutes dispatches credential-specific routes.
+// Paths: /credentials/{id}/delete
+func (h *handler) handleCredentialRoutes(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/credentials/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) == 0 || parts[0] == "" {
+		http.Redirect(w, r, "/credentials", http.StatusSeeOther)
+		return
+	}
+
+	credID := parts[0]
+
+	// POST /credentials/{id}/delete
+	if len(parts) == 2 && parts[1] == "delete" && r.Method == http.MethodPost {
+		if err := h.credStore.Delete(credID); err != nil {
+			h.log.Errorf("failed to delete credential %q: %v", credID, err)
+			http.Redirect(w, r, "/credentials?error=Failed+to+delete+credential", http.StatusSeeOther)
+			return
+		}
+		h.log.Infof("deleted credential: %s", credID)
+		http.Redirect(w, r, "/credentials?success=Credential+deleted", http.StatusSeeOther)
+		return
+	}
+
+	http.NotFound(w, r)
+}
+
 // --- JSON API handlers ---
 
 // handleAPIQueues returns queue list as JSON for auto-refresh.
@@ -550,6 +731,21 @@ func (h *handler) handleAPIQueueMessages(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, newQueueListItem(q, h.manager))
 }
 
+// handleAPICredentials returns credentials list as JSON for auto-refresh.
+func (h *handler) handleAPICredentials(w http.ResponseWriter, r *http.Request) {
+	creds, err := h.credStore.List()
+	if err != nil {
+		h.log.Errorf("failed to list credentials: %v", err)
+		writeJSONError(w, "failed to list credentials", http.StatusInternalServerError)
+		return
+	}
+	items := make([]credentialDisplay, 0, len(creds))
+	for _, c := range creds {
+		items = append(items, newCredentialDisplay(c, false))
+	}
+	writeJSON(w, items)
+}
+
 // --- Helpers ---
 
 // renderTemplate executes the named template with the given data.
@@ -575,7 +771,10 @@ func (h *handler) renderTemplate(w http.ResponseWriter, name string, data any) {
 		return
 	}
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		// Template execution failed. If headers haven't been written yet,
+		// send a proper error response; otherwise just log — we can't
+		// recover the response once writing has started.
+		h.log.Errorf("template execution failed for %s: %v", name, err)
 	}
 }
 
@@ -588,6 +787,11 @@ func writeJSONError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// toPtr returns a pointer to the given value.
+func toPtr[T any](v T) *T {
+	return &v
 }
 
 // buildAttrPairs converts QueueAttributes into a sorted list of name-value pairs for display.

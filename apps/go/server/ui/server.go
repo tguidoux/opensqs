@@ -6,10 +6,12 @@ import (
 	"io/fs"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tguidoux/opensqs/apps/go/server/serverbase"
 	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/credentials"
 )
 
 // Server is the web dashboard HTTP server.
@@ -23,17 +25,21 @@ type Server struct {
 // NewServer creates a new UI server on the given port.
 // The manager provides direct access to queue operations without
 // going through the SQS wire protocol.
+// credStore provides credential storage for the Credentials tab.
 // metricsEnabled controls whether the metrics tab is shown.
 // If tlsCfg is non-nil, the server will use HTTPS.
-func NewServer(port int, manager *queue.QueueManager, log logger.LoggerInterface, metricsEnabled bool, tlsCfg *tls.Config) *Server {
+func NewServer(port int, manager *queue.QueueManager, credStore credentials.CredentialStore, log logger.LoggerInterface, metricsEnabled bool, tlsCfg *tls.Config) *Server {
 	mux := http.NewServeMux()
-	h := newHandler(manager, log, metricsEnabled)
+	h := newHandler(manager, credStore, log, metricsEnabled)
 
 	// HTML pages
 	mux.HandleFunc("/", h.handleIndex)
 	mux.HandleFunc("/queues/new", h.handleCreateQueueForm)
 	mux.HandleFunc("/queues/create", h.handleCreateQueue)
 	mux.HandleFunc("/queues/", h.handleQueueRoutes)
+	mux.HandleFunc("/credentials", h.handleCredentials)
+	mux.HandleFunc("/credentials/create", h.handleCreateCredential)
+	mux.HandleFunc("/credentials/", h.handleCredentialRoutes)
 	mux.HandleFunc("/metrics", h.handleMetrics)
 
 	// Static assets
@@ -46,13 +52,14 @@ func NewServer(port int, manager *queue.QueueManager, log logger.LoggerInterface
 	// JSON API endpoints for auto-refresh
 	mux.HandleFunc("/api/queues", h.handleAPIQueues)
 	mux.HandleFunc("/api/queues/", h.handleAPIQueueMessages)
+	mux.HandleFunc("/api/credentials", h.handleAPICredentials)
 	mux.HandleFunc("/api/metrics", h.handleAPIMetrics)
 
 	// Wrap with security headers and CSRF protection
 	securedMux := withCSRFProtection(withSecurityHeaders(mux))
 
 	return &Server{
-		Server: serverbase.New(port, securedMux, tlsCfg, 10, 10, 120),
+		Server: serverbase.New(port, securedMux, tlsCfg, 10*time.Second, 10*time.Second, 120*time.Second),
 		log:    log,
 	}
 }
@@ -63,7 +70,7 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		// HSTS only makes sense over HTTPS — only set it when the request
 		// is already over TLS (directly or via a TLS-terminating proxy).

@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/tguidoux/opensqs/apps/go/server/serverbase"
 )
@@ -25,6 +26,6 @@ func NewServer(port int, tlsCfg *tls.Config) *Server {
 	})
 
 	return &Server{
-		Server: serverbase.New(port, mux, tlsCfg, 5, 5, 60),
+		Server: serverbase.New(port, mux, tlsCfg, 5*time.Second, 5*time.Second, 60*time.Second),
 	}
 }
