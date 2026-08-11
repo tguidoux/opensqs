@@ -263,13 +263,16 @@ func (a *QueueAttributes) SetAttributes(attrs map[string]string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// Validate all attributes first without applying changes.
-	// We use a temporary copy to validate, then apply if all succeed.
+	// Validate all attributes against a copy so updates remain atomic.
+	// If any attribute is invalid, we leave the original object unchanged.
+	clone := *a
 	for name, value := range attrs {
-		if err := a.validateAndSet(name, value); err != nil {
+		if err := clone.validateAndSet(name, value); err != nil {
 			return err
 		}
 	}
+
+	*a = clone
 	return nil
 }
 

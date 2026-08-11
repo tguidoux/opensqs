@@ -53,6 +53,24 @@ func TestSetAttribute(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSetAttributesAtomic(t *testing.T) {
+	attrs := queue.NewDefaultQueueAttributes()
+
+	err := attrs.SetAttributes(map[string]string{
+		types.AttributeVisibilityTimeout: "60",
+		types.AttributeRedrivePolicy:     "{bad json",
+	})
+	require.Error(t, err)
+
+	v, ok := attrs.GetAttribute(types.AttributeVisibilityTimeout)
+	assert.True(t, ok)
+	assert.Equal(t, "30", v)
+
+	redrive, ok := attrs.GetAttribute(types.AttributeRedrivePolicy)
+	assert.True(t, ok)
+	assert.Empty(t, redrive)
+}
+
 func TestAllAttributes(t *testing.T) {
 	attrs := queue.NewDefaultQueueAttributes()
 	all := attrs.AllAttributes()
