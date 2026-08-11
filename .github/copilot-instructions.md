@@ -38,7 +38,7 @@ Go services: main.go, config.yaml, BUILD.bazel.
 Environment-specific configuration in YAML files (config.yaml for local, values.{env}.yaml for deployments).
 Secrets stored in AWS SSM Parameter Store, referenced by path in configs.
 Configuration structs embed `config.ConfigI[T]` for automatic loading and validation.
-Environment enum: LOCAL, STAGING, PROD, AOOSTAR using `env.Environment` type.
+Environment enum: LOCAL, STAGING, PROD using `env.Environment` type.
 
 ## Deployment
 Use `opensqs_go_image` macros for containerization.
@@ -66,7 +66,7 @@ Simply run `bazel run //:gazelle` after adding new test files or packages, and i
 ## Shared Libraries
 All shared code in `pkgs/v1/` with domain-specific packages:
 `config/` - Configuration loading from YAML with schema validation.
-`environment/` - Environment enum (LOCAL, STAGING, PROD, AOOSTAR).
+`environment/` - Environment enum (LOCAL, STAGING, PROD).
 `logger/` - Structured logging for Go.
 
 ## Development Workflow

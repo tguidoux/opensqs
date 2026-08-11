@@ -20,11 +20,6 @@ func TestGetRegion(t *testing.T) {
 			expected: "",
 		},
 		{
-			name:     "AOOSTAR environment returns empty string",
-			env:      environment.AOOSTAR,
-			expected: "",
-		},
-		{
 			name:     "STAGING environment returns us-east-1",
 			env:      environment.STAGING,
 			expected: "us-east-1",
@@ -44,78 +39,6 @@ func TestGetRegion(t *testing.T) {
 	}
 }
 
-func TestGetSSMRegion(t *testing.T) {
-	tests := []struct {
-		name     string
-		env      environment.Environment
-		expected string
-	}{
-		{
-			name:     "LOCAL environment returns empty string",
-			env:      environment.LOCAL,
-			expected: "",
-		},
-		{
-			name:     "AOOSTAR environment returns empty string",
-			env:      environment.AOOSTAR,
-			expected: "",
-		},
-		{
-			name:     "STAGING environment returns us-east-1",
-			env:      environment.STAGING,
-			expected: "us-east-1",
-		},
-		{
-			name:     "PROD environment returns us-east-1",
-			env:      environment.PROD,
-			expected: "us-east-1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := config.GetSSMRegion(tt.env)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestGetS3Region(t *testing.T) {
-	tests := []struct {
-		name     string
-		env      environment.Environment
-		expected string
-	}{
-		{
-			name:     "LOCAL environment returns us-east-1",
-			env:      environment.LOCAL,
-			expected: "us-east-1",
-		},
-		{
-			name:     "AOOSTAR environment returns us-east-1",
-			env:      environment.AOOSTAR,
-			expected: "us-east-1",
-		},
-		{
-			name:     "STAGING environment returns us-east-1",
-			env:      environment.STAGING,
-			expected: "us-east-1",
-		},
-		{
-			name:     "PROD environment returns us-east-1",
-			env:      environment.PROD,
-			expected: "us-east-1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := config.GetS3Region(tt.env)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestGetSQSRegion(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -125,11 +48,6 @@ func TestGetSQSRegion(t *testing.T) {
 		{
 			name:     "LOCAL environment returns empty string",
 			env:      environment.LOCAL,
-			expected: "",
-		},
-		{
-			name:     "AOOSTAR environment returns empty string",
-			env:      environment.AOOSTAR,
 			expected: "",
 		},
 		{
@@ -152,42 +70,6 @@ func TestGetSQSRegion(t *testing.T) {
 	}
 }
 
-func TestGetAWSS3EndpointURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		env      environment.Environment
-		expected string
-	}{
-		{
-			name:     "LOCAL environment returns local endpoint",
-			env:      environment.LOCAL,
-			expected: config.LocalAWSS3EndpointURL,
-		},
-		{
-			name:     "AOOSTAR environment returns aoostar endpoint",
-			env:      environment.AOOSTAR,
-			expected: config.AoostarAWSS3EndpointURL,
-		},
-		{
-			name:     "STAGING environment returns empty string",
-			env:      environment.STAGING,
-			expected: "",
-		},
-		{
-			name:     "PROD environment returns empty string",
-			env:      environment.PROD,
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := config.GetAWSS3EndpointURL(tt.env)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestGetAWSSQSEndpointURL(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -198,11 +80,6 @@ func TestGetAWSSQSEndpointURL(t *testing.T) {
 			name:     "LOCAL environment returns local endpoint",
 			env:      environment.LOCAL,
 			expected: config.LocalAWSSQSEndpointURL,
-		},
-		{
-			name:     "AOOSTAR environment returns aoostar endpoint",
-			env:      environment.AOOSTAR,
-			expected: config.AoostarAWSSQSEndpointURL,
 		},
 		{
 			name:     "STAGING environment returns empty string",
@@ -224,49 +101,6 @@ func TestGetAWSSQSEndpointURL(t *testing.T) {
 	}
 }
 
-func TestGetAWSSSMEndpointURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		env      environment.Environment
-		expected string
-	}{
-		{
-			name:     "LOCAL environment returns local endpoint",
-			env:      environment.LOCAL,
-			expected: config.LocalAWSSSMEndpointURL,
-		},
-		{
-			name:     "AOOSTAR environment returns aoostar endpoint",
-			env:      environment.AOOSTAR,
-			expected: config.AoostarAWSSSMEndpointURL,
-		},
-		{
-			name:     "STAGING environment returns empty string",
-			env:      environment.STAGING,
-			expected: "",
-		},
-		{
-			name:     "PROD environment returns empty string",
-			env:      environment.PROD,
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := config.GetAWSSSMEndpointURL(tt.env)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestConstants(t *testing.T) {
-	// Test that constants have expected values
-	assert.Equal(t, "http://localhost:9000", config.LocalAWSS3EndpointURL)
 	assert.Equal(t, "http://localhost:9324", config.LocalAWSSQSEndpointURL)
-	assert.Equal(t, "http://localhost:8000", config.LocalAWSSSMEndpointURL)
-
-	assert.Equal(t, "http://minio.aoostar.local:9000", config.AoostarAWSS3EndpointURL)
-	assert.Equal(t, "http://opensqs.aoostar.local:9324", config.AoostarAWSSQSEndpointURL)
-	assert.Equal(t, "http://ssm.aoostar.local:8000", config.AoostarAWSSSMEndpointURL)
 }

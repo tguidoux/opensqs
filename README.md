@@ -132,7 +132,7 @@ opensqs/
 │           └── sqs_example/     # Queue library usage example
 ├── pkgs/v1/
 │   ├── config/                  # YAML config loading with validation
-│   ├── environment/             # Environment enum (LOCAL, STAGING, PROD, AOOSTAR)
+│   ├── environment/             # Environment enum (LOCAL, STAGING, PROD)
 │   ├── logger/                  # Structured logging
 │   └── queue/                   # Queue engine, manager, store, types
 │       ├── queue.go             # Queue struct & operations
@@ -196,7 +196,7 @@ log:
 environment: "local"
 ```
 
-Environments: `LOCAL`, `STAGING`, `PROD`, `AOOSTAR`. Health checks run on port 8001 for non-local environments.
+Environments: `LOCAL`, `STAGING`, `PROD`. Health checks run on port 8001 for non-local environments.
 
 ### Startup Queues
 
@@ -253,7 +253,7 @@ bazel test //apps/go/server/handlers/tests:go_default_test
 | Package | Description |
 |---------|-------------|
 | `pkgs/v1/config/` | YAML config loading with schema validation |
-| `pkgs/v1/environment/` | Environment enum (LOCAL, STAGING, PROD, AOOSTAR) |
+| `pkgs/v1/environment/` | Environment enum (LOCAL, STAGING, PROD) |
 | `pkgs/v1/logger/` | Structured logging (contextual & uncontextual) |
 | `pkgs/v1/queue/` | Queue engine, manager, in-memory store, types |
 

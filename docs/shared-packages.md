@@ -7,7 +7,7 @@ This document describes the shared packages in `pkgs/v1/` that provide cross-cut
 ```
 pkgs/v1/
 ├── config/       # Configuration loading from YAML with validation
-├── environment/  # Environment enum (PROD, STAGING, LOCAL, AOOSTAR)
+├── environment/  # Environment enum (PROD, STAGING, LOCAL)
 ├── logger/       # Structured JSON logging
 └── queue/        # Queue engine (see Queue Library docs)
     ├── queue.go          # Queue struct and methods
@@ -88,28 +88,19 @@ cfg := config.NewConfigFromEnv[MyConfig]("MY_CONFIG_PATH")
 
 ### Default Endpoints (`default.go`)
 
-AWS endpoint URLs for local and AOOSTAR environments:
+AWS endpoint URLs for local environment:
 
 | Constant | Value |
 |----------|-------|
-| `LocalAWSS3EndpointURL` | `http://localhost:9000` |
 | `LocalAWSSQSEndpointURL` | `http://localhost:9324` |
-| `LocalAWSSSMEndpointURL` | `http://localhost:8000` |
-| `AoostarAWSS3EndpointURL` | `http://minio.aoostar.local:9000` |
-| `AoostarAWSSQSEndpointURL` | `http://opensqs.aoostar.local:9324` |
-| `AoostarAWSSSMEndpointURL` | `http://ssm.aoostar.local:8000` |
 
 ### Endpoint Functions
 
-| Function | LOCAL | AOOSTAR | STAGING/PROD |
-|----------|-------|---------|--------------|
-| `GetRegion(env)` | `""` | `""` | `us-east-1` |
-| `GetSSMRegion(env)` | `""` | `""` | `us-east-1` |
-| `GetS3Region(env)` | `us-east-1` | `us-east-1` | `us-east-1` |
-| `GetSQSRegion(env)` | `""` | `""` | `us-east-1` |
-| `GetAWSS3EndpointURL(env)` | Local URL | AOOSTAR URL | `""` |
-| `GetAWSSQSEndpointURL(env)` | Local URL | AOOSTAR URL | `""` |
-| `GetAWSSSMEndpointURL(env)` | Local URL | AOOSTAR URL | `""` |
+| Function | LOCAL | STAGING/PROD |
+|----------|-------|--------------|
+| `GetRegion(env)` | `""` | `us-east-1` |
+| `GetSQSRegion(env)` | `""` | `us-east-1` |
+| `GetAWSSQSEndpointURL(env)` | Local URL | `""` |
 
 ---
 
@@ -136,7 +127,6 @@ type Environment string
 | `PROD` | `"prod"` | Production environment |
 | `STAGING` | `"staging"` | Staging environment |
 | `LOCAL` | `"local"` | Local development |
-| `AOOSTAR` | `"aoostar"` | Custom environment |
 
 ### Usage
 

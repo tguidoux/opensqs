@@ -57,9 +57,9 @@ func main() {
 	log := logger.New("opensqs-server", logger.UncontextualLoggerType, logLevel)
 
 	log.Info("starting OpenSQS server", map[string]any{
-		"host":          cfg.Server.Host,
-		"port":          cfg.Server.Port,
-		"nodeAddress":   cfg.SQS.NodeAddress,
+		"host":         cfg.Server.Host,
+		"port":         cfg.Server.Port,
+		"nodeAddress":  cfg.SQS.NodeAddress,
 		"accountId":    cfg.SQS.AccountID,
 		"region":       cfg.SQS.Region,
 		"storageType":  cfg.SQS.StorageType,

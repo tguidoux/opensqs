@@ -173,7 +173,7 @@ requestLogging:
 ### Environment
 
 ```yaml
-environment: local        # local, staging, prod, aoostar
+environment: local        # local, staging, prod
 ```
 
 | Value | Description |
@@ -181,7 +181,6 @@ environment: local        # local, staging, prod, aoostar
 | `local` | Local development. Health check disabled. No AWS region. |
 | `staging` | Staging environment. Health check enabled. Region: `us-east-1`. |
 | `prod` | Production environment. Health check enabled. Region: `us-east-1`. |
-| `aoostar` | Custom environment. Health check disabled. No AWS region. |
 
 ### Startup Queues (`queues`)
 

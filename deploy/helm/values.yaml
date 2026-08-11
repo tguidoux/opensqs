@@ -104,7 +104,7 @@ opensqs:
     enabled: true
     port: 9326
 
-  # -- Environment: "local", "staging", "prod", "aoostar"
+  # -- Environment: "local", "staging", "prod"
   environment: "prod"
 
   # Request logging middleware
