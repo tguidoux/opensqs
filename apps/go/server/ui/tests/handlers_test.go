@@ -203,7 +203,7 @@ func TestAPIQueuesEmpty(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &items)
 	require.NoError(t, err)
 	assert.Empty(t, items)
@@ -224,7 +224,7 @@ func TestAPIQueuesWithData(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	err = json.Unmarshal(w.Body.Bytes(), &items)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
@@ -247,7 +247,7 @@ func TestAPIQueueMessages(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var msgs []map[string]interface{}
+	var msgs []map[string]any
 	err = json.Unmarshal(w.Body.Bytes(), &msgs)
 	require.NoError(t, err)
 	assert.Empty(t, msgs)
@@ -351,7 +351,7 @@ func TestAPIMetricsEnabled(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var data map[string]interface{}
+	var data map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &data)
 	require.NoError(t, err)
 	// Should have metrics fields
@@ -456,7 +456,7 @@ func TestAPICredentialsEmpty(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &items)
 	require.NoError(t, err)
 	assert.Empty(t, items)
@@ -478,7 +478,7 @@ func TestAPICredentialsWithData(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	err = json.Unmarshal(w.Body.Bytes(), &items)
 	require.NoError(t, err)
 	require.Len(t, items, 1)

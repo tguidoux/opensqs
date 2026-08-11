@@ -282,4 +282,15 @@ window.toggleCreateForm = function() {
     if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
 };
 
+// toggleFifoHint updates the queue name placeholder based on FIFO checkbox state.
+window.toggleFifoHint = function() {
+    const nameInput = document.getElementById('queueName');
+    const isFifo = document.getElementById('fifoQueue').checked;
+    if (isFifo && !nameInput.value.endsWith('.fifo')) {
+        nameInput.placeholder = 'my-queue.fifo (must end with .fifo)';
+    } else {
+        nameInput.placeholder = 'my-queue or my-queue.fifo';
+    }
+};
+
 })(); // end IIFE

@@ -514,7 +514,7 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/queues/"+queueName+"?error=Invalid+form+data", http.StatusSeeOther)
+		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Invalid+form+data", http.StatusSeeOther)
 		return
 	}
 
@@ -526,7 +526,7 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 
 	body := r.FormValue("body")
 	if body == "" {
-		http.Redirect(w, r, "/queues/"+queueName+"?error=Message+body+is+required", http.StatusSeeOther)
+		http.Redirect(w, r, "/queues/"+url.PathEscape(queueName)+"?error=Message+body+is+required", http.StatusSeeOther)
 		return
 	}
 
@@ -562,6 +562,11 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 
 // handleDeleteMessage deletes a specific message by receipt handle.
 func (h *handler) handleDeleteMessage(w http.ResponseWriter, r *http.Request, queueName, receiptHandle string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	q, err := h.manager.LookupQueue(queueName)
 	if err != nil {
 		http.Redirect(w, r, "/?error=Queue+not+found", http.StatusSeeOther)
@@ -778,7 +783,7 @@ func (h *handler) renderTemplate(w http.ResponseWriter, name string, data any) {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, data interface{}) {
+func writeJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(data)
 }

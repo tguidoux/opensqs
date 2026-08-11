@@ -10,7 +10,7 @@ sqs:
   nodeAddress: "localhost:9324"
   accountId: "123456789012"
   region: "us-east-1"
-  storageType: "sqlite"  # Use "memory", "sqlite", or "badger "
+  storageType: "sqlite"  # Use "memory", "sqlite", or "badger"
   sqlitePath: "/tmp/opensqs.db"  # Uncomment and set storageType to "sqlite" for SQLite persistence
   # badgerPath: "/data/badger"      # Uncomment and set storageType to "badger" for BadgerDB persistence
   strictLimits: true

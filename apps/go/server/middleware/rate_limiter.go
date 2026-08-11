@@ -97,9 +97,6 @@ func PerQueueRateLimiter(rps float64, burst int) (Middleware, func()) {
 	return mw, cleanup
 }
 
-// extractQueueName parses the queue name from the URL path.
-// SQS queue URLs follow the format: /{accountId}/{queueName}
-// Returns an empty string if no queue name is found.
 // ExtractQueueName parses the queue name from an SQS URL path.
 // SQS paths follow the pattern /{accountId}/{queueName}.
 // Returns empty string if the path doesn't match.

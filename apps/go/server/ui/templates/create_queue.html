@@ -61,18 +61,6 @@
     </form>
 </div>
 
-<script>
-function toggleFifoHint() {
-    const nameInput = document.getElementById('queueName');
-    const isFifo = document.getElementById('fifoQueue').checked;
-    if (isFifo && !nameInput.value.endsWith('.fifo')) {
-        nameInput.placeholder = 'my-queue.fifo (must end with .fifo)';
-    } else {
-        nameInput.placeholder = 'my-queue or my-queue.fifo';
-    }
-}
-</script>
-
 <div class="card">
     <h2>AWS CLI</h2>
     <p class="hint">Set these environment variables so the AWS CLI talks to this OpenSQS instance.</p>
