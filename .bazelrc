@@ -3,9 +3,6 @@ common --enable_platform_specific_config
 
 # Sandbox mounts for temporary directories
 build:linux --sandbox_add_mount_pair=/tmp
-# Retain protobuf upb linker-generated start/stop symbols for Linux exec tools.
-build:linux --host_linkopt=-Wl,-u,__start_linkarr_upb_AllExts
-build:linux --host_linkopt=-Wl,-u,__stop_linkarr_upb_AllExts
 build:macos --sandbox_add_mount_pair=/var/tmp
 build:windows --sandbox_add_mount_pair=C:\Temp
 

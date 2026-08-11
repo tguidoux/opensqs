@@ -65,6 +65,11 @@ use_repo(
 #     path = "github.com/smacker/go-tree-sitter",
 # )
 
+single_version_override(
+    module_name = "protobuf",
+    version = "35.0",
+)
+
 ########################################
 # Set up hermetic Buildifier tools
 ########################################
