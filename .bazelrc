@@ -3,6 +3,8 @@ common --enable_platform_specific_config
 
 # Sandbox mounts for temporary directories
 build:linux --sandbox_add_mount_pair=/tmp
+# Keep protobuf upb start/stop sections when linking Linux exec tools with lld.
+build:linux --host_linkopt=-Wl,-z,nostart-stop-gc
 build:macos --sandbox_add_mount_pair=/var/tmp
 build:windows --sandbox_add_mount_pair=C:\Temp
 
