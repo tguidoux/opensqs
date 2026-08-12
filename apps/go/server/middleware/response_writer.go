@@ -48,3 +48,10 @@ func (w *statusResponseWriter) Flush() {
 		flusher.Flush()
 	}
 }
+
+// Unwrap returns the underlying http.ResponseWriter, enabling
+// http.ResponseController to access extended interfaces (Hijack, Flusher, etc.)
+// on the wrapped writer.
+func (w *statusResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}

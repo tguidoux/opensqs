@@ -50,7 +50,8 @@ type authErrorResponse struct {
 
 // Auth creates a middleware that validates credentials against the store.
 // If the store is nil, the middleware is a no-op (auth disabled).
-func Auth(credStore credentials.CredentialStore, log logger.LoggerInterface) Middleware {
+// The expectedRegion is used to validate the region in SigV4 credential scope.
+func Auth(credStore credentials.CredentialStore, expectedRegion string, log logger.LoggerInterface) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if credStore == nil {
@@ -61,7 +62,7 @@ func Auth(credStore credentials.CredentialStore, log logger.LoggerInterface) Mid
 			// Try SigV4 first (Authorization header), then fall back to legacy query params.
 			authHeader := r.Header.Get("Authorization")
 			if strings.HasPrefix(authHeader, sigV4Algorithm) {
-				verifySigV4(w, r, credStore, log, next)
+				verifySigV4(w, r, credStore, expectedRegion, log, next)
 				return
 			}
 
@@ -159,12 +160,30 @@ type sigV4Components struct {
 //  4. Build the string-to-sign: algorithm + timestamp + scope + SHA256(canonical request).
 //  5. Derive the signing key: HMAC chain using "AWS4" + secret, date, region, service, "aws4_request".
 //  6. Compute the signature and compare with the provided one.
-func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.CredentialStore, log logger.LoggerInterface, next http.Handler) {
+func verifySigV4(w http.ResponseWriter, r *http.Request, credStore credentials.CredentialStore, expectedRegion string, log logger.LoggerInterface, next http.Handler) {
 	// Parse the Authorization header
 	parts, err := parseSigV4AuthHeader(r.Header.Get("Authorization"))
 	if err != nil {
 		writeAuthError(w, "IncompleteSignature", err.Error())
 		log.Warningf("failed to parse SigV4 header for request %s %s: %v", r.Method, r.URL.Path, err)
+		return
+	}
+
+	// Validate the service name in the credential scope
+	if parts.Service != sqsServiceName {
+		writeAuthError(w, "InvalidSignatureException",
+			fmt.Sprintf("Credential should be scoped to service %q, but got %q", sqsServiceName, parts.Service))
+		log.Warningf("SigV4 service mismatch: expected %q, got %q for request %s %s",
+			sqsServiceName, parts.Service, r.Method, r.URL.Path)
+		return
+	}
+
+	// Validate the region in the credential scope
+	if expectedRegion != "" && parts.Region != expectedRegion {
+		writeAuthError(w, "InvalidSignatureException",
+			fmt.Sprintf("Credential should be scoped to region %q, but got %q", expectedRegion, parts.Region))
+		log.Warningf("SigV4 region mismatch: expected %q, got %q for request %s %s",
+			expectedRegion, parts.Region, r.Method, r.URL.Path)
 		return
 	}
 

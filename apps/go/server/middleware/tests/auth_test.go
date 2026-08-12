@@ -283,7 +283,7 @@ func buildSignedRequest(method, path string, query url.Values, body []byte, secr
 // ---------------------------------------------------------------------------
 
 func TestAuthNilStore(t *testing.T) {
-	mw := middleware.Auth(nil, testLogger())
+	mw := middleware.Auth(nil, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -300,7 +300,7 @@ func TestAuthNilStore(t *testing.T) {
 
 func TestAuthLegacyQuerySuccess(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	// Build a POST request with legacy query params in the body
@@ -321,7 +321,7 @@ func TestAuthLegacyQuerySuccess(t *testing.T) {
 
 func TestAuthLegacyQueryInURL(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	// Credentials in URL query string
@@ -336,7 +336,7 @@ func TestAuthLegacyQueryInURL(t *testing.T) {
 
 func TestAuthLegacyQueryMissingCredentials(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	form := url.Values{}
@@ -354,7 +354,7 @@ func TestAuthLegacyQueryMissingCredentials(t *testing.T) {
 
 func TestAuthLegacyQueryInvalidAccessKey(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	form := url.Values{}
@@ -374,7 +374,7 @@ func TestAuthLegacyQueryInvalidAccessKey(t *testing.T) {
 
 func TestAuthLegacyQueryWrongSecret(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	form := url.Values{}
@@ -398,7 +398,7 @@ func TestAuthLegacyQueryWrongSecret(t *testing.T) {
 
 func TestAuthSigV4Success(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	body := []byte("Action=SendMessage&MessageBody=hello")
@@ -415,7 +415,7 @@ func TestAuthSigV4Success(t *testing.T) {
 
 func TestAuthSigV4GetSuccess(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	query := url.Values{}
@@ -430,7 +430,7 @@ func TestAuthSigV4GetSuccess(t *testing.T) {
 
 func TestAuthSigV4InvalidSignature(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	body := []byte("Action=SendMessage&MessageBody=hello")
@@ -448,7 +448,7 @@ func TestAuthSigV4InvalidSignature(t *testing.T) {
 
 func TestAuthSigV4InvalidAccessKey(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	body := []byte("Action=ListQueues")
@@ -478,7 +478,7 @@ func TestAuthSigV4InvalidAccessKey(t *testing.T) {
 
 func TestAuthSigV4MalformedAuthHeader(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	req := httptest.NewRequest("POST", "/", strings.NewReader("Action=ListQueues"))
@@ -504,7 +504,7 @@ func TestAuthSigV4BodyRestoredAfterVerification(t *testing.T) {
 		w.Write([]byte("ok"))
 	})
 
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(handler)
 
 	body := []byte("Action=SendMessage&MessageBody=hello")
@@ -520,7 +520,7 @@ func TestAuthSigV4BodyRestoredAfterVerification(t *testing.T) {
 
 func TestAuthSigV4WithQueryParams(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	// Test with multiple query params that need canonical sorting
@@ -540,7 +540,7 @@ func TestAuthSigV4WithQueryParams(t *testing.T) {
 
 func TestAuthSigV4TamperedBody(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	// Sign one body, but send a different one
@@ -570,7 +570,7 @@ func TestAuthSigV4TamperedBody(t *testing.T) {
 
 func TestAuthSigV4WithPath(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	// Test with a path like /123456789012/my-queue
@@ -591,7 +591,7 @@ func TestAuthSigV4WithPath(t *testing.T) {
 
 func TestAuthErrorResponseFormat(t *testing.T) {
 	store := newFakeCredStore(testCredential)
-	mw := middleware.Auth(store, testLogger())
+	mw := middleware.Auth(store, "us-east-1", testLogger())
 	wrapped := mw(testHandler())
 
 	req := httptest.NewRequest("GET", "/", nil)
