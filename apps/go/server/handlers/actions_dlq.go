@@ -10,6 +10,11 @@ import (
 
 // handleListDeadLetterSourceQueues handles the ListDeadLetterSourceQueues action.
 // It returns the URLs of all queues that have a RedrivePolicy pointing to the specified DLQ.
+//
+// Note: This implementation loads all queues into memory without pagination.
+// For deployments with a very large number of queues, this should be replaced
+// with a paginated scan that respects the MaxResults and NextToken parameters
+// as specified by the AWS SQS API.
 func (h *Handler) handleListDeadLetterSourceQueues(ctx context.Context, req Request) (*Response, error) {
 	dlqQueue, err := h.resolveQueue(req.GetQueueURL())
 	if err != nil {

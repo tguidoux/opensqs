@@ -40,7 +40,7 @@ func main() {
 			configPath = "/apps/go/server/config.yaml"
 		}
 	}
-	cfg := config.NewConfigFromEnv[ServerConfig]().Config
+	cfg := config.NewConfig[ServerConfig](configPath).Config
 
 	// Initialize logger with configured level
 	var logLevel slog.Level
@@ -123,6 +123,7 @@ func main() {
 		cfg.SQS.Region,
 		[]byte(cfg.SQS.ServerSecret),
 		storeFactory,
+		log,
 	)
 
 	// Create startup queues from config
@@ -157,7 +158,7 @@ func main() {
 		middlewares = append(middlewares, middleware.RequestLogger(log))
 	}
 	if cfg.Auth.IsEnabled() {
-		middlewares = append(middlewares, middleware.Auth(credStore, log))
+		middlewares = append(middlewares, middleware.Auth(credStore, cfg.SQS.Region, log))
 		log.Info("credential authentication enabled")
 	} else {
 		log.Info("credential authentication disabled")
@@ -297,6 +298,9 @@ func main() {
 	if err := manager.Shutdown(ctx); err != nil {
 		log.Errorf("failed to shutdown queue manager: %v", err)
 	}
+
+	// Shutdown the handler (stops MoveTaskManager cleanup goroutine)
+	handler.Close()
 
 	log.Info("server stopped")
 }

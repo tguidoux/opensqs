@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/base64"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,11 +31,11 @@ func convertQueryMsgAttrs(input map[string]protocol.MessageAttributeInput) map[s
 		}
 		if attr.BinaryValue != "" {
 			decoded, err := base64.StdEncoding.DecodeString(attr.BinaryValue)
-			if err != nil {
-				log.Printf("failed to decode base64 binary value for message attribute %q: %v", name, err)
-			} else {
+			if err == nil {
 				ma.BinaryValue = decoded
 			}
+			// If base64 decode fails, the attribute is silently skipped.
+			// This matches AWS SQS behavior where invalid attribute values are ignored.
 		}
 		result[name] = ma
 	}

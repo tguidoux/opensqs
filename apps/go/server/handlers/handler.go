@@ -167,10 +167,16 @@ func NewHandler(manager *queue.QueueManager, limits *queue.Limits, autoCreate bo
 		manager:     manager,
 		limits:      limits,
 		autoCreate:  autoCreate,
-		moveTaskMgr: dlq.NewMoveTaskManager(lookupFn, listFn),
+		moveTaskMgr: dlq.NewMoveTaskManager(lookupFn, listFn, log),
 		metrics:     metricsCollector,
 		log:         log,
 	}
+}
+
+// Close releases resources held by the Handler, including the MoveTaskManager.
+// Call this during graceful shutdown after the HTTP server has stopped.
+func (h *Handler) Close() {
+	h.moveTaskMgr.Close()
 }
 
 // HandleRequest dispatches a request to the appropriate action handler.

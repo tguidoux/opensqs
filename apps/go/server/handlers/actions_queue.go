@@ -22,8 +22,8 @@ func (h *Handler) handleCreateQueue(ctx context.Context, req Request) (*Response
 
 	// Build attributes from request if provided
 	attrs := queue.NewDefaultQueueAttributes()
-	for name, value := range req.GetAttributes() {
-		if err := attrs.SetAttribute(name, value); err != nil {
+	for attrName, value := range req.GetAttributes() {
+		if err := attrs.SetAttribute(attrName, value); err != nil {
 			return nil, queue.NewInvalidAttributeName(err.Error())
 		}
 	}
@@ -177,9 +177,15 @@ func (h *Handler) handlePurgeQueue(ctx context.Context, req Request) (*Response,
 		return nil, err
 	}
 
+	if err := q.CheckPurgeCooldown(); err != nil {
+		return nil, err
+	}
+
 	if err := h.manager.PurgeQueue(ctx, q.Name()); err != nil {
 		return nil, queue.NewInternalError(err.Error())
 	}
+
+	q.MarkPurged()
 
 	return &Response{
 		Action:    types.ActionPurgeQueue,
