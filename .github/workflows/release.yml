@@ -87,6 +87,7 @@ jobs:
         env:
           DOCKER_CONFIG: /home/runner/.docker
           HOME: /home/runner
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Pass the same token through to Bazel/crane for GHCR auth
           CR_TOKEN: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
         run: |
