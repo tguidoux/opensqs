@@ -63,6 +63,41 @@ func (s *SQLiteCredentialStore) Create(label, region, accountID string) (*Creden
 	return cred, nil
 }
 
+// Import stores a credential with an explicitly provided access key ID and
+// secret access key. Returns an error if a credential with the same access
+// key ID already exists.
+func (s *SQLiteCredentialStore) Import(label, accessKeyID, secretAccessKey, region, accountID string) (*Credential, error) {
+	// Check for duplicate access key ID
+	var existingID string
+	err := s.db.QueryRow(`SELECT id FROM credentials WHERE access_key_id = ?`, accessKeyID).Scan(&existingID)
+	if err == nil {
+		return nil, fmt.Errorf("credential with access key ID %q already exists", accessKeyID)
+	}
+	if err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to check for duplicate credential: %w", err)
+	}
+
+	cred := &Credential{
+		ID:              GenerateID(),
+		Label:           label,
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		Region:          region,
+		AccountID:       accountID,
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	_, err = s.db.Exec(
+		`INSERT INTO credentials (id, label, access_key_id, secret_access_key, region, account_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		cred.ID, cred.Label, cred.AccessKeyID, cred.SecretAccessKey, cred.Region, cred.AccountID, cred.CreatedAt.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert credential: %w", err)
+	}
+
+	return cred, nil
+}
+
 // List returns all stored credentials without secret access keys.
 func (s *SQLiteCredentialStore) List() ([]*Credential, error) {
 	rows, err := s.db.Query(

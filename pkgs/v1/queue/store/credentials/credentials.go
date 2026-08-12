@@ -34,6 +34,13 @@ type CredentialStore interface {
 	// secret, which is only available at creation time).
 	Create(label, region, accountID string) (*Credential, error)
 
+	// Import stores a credential with an explicitly provided Access Key ID
+	// and Secret Access Key (instead of auto-generating them). This is
+	// used to seed the store with pre-existing credentials at startup.
+	// Returns an error if a credential with the same accessKeyID already
+	// exists.
+	Import(label, accessKeyID, secretAccessKey, region, accountID string) (*Credential, error)
+
 	// List returns all stored credentials. Secret access keys are
 	// not included in the returned credentials.
 	List() ([]*Credential, error)

@@ -190,3 +190,153 @@ func TestCreateMultipleLabels(t *testing.T) {
 	assert.Equal(t, "eu-west-1", cred2.Region)
 	assert.Equal(t, "222222222222", cred2.AccountID)
 }
+
+// runImportTests runs the common Import test suite against any CredentialStore.
+func runImportTests(t *testing.T, store credentials.CredentialStore) {
+	t.Helper()
+
+	// Import a credential with explicit access key ID and secret
+	cred, err := store.Import("my-profile", "AKIATESTIMPORT123", "secret123", "us-east-1", "123456789012")
+	require.NoError(t, err)
+	require.NotNil(t, cred)
+	assert.NotEmpty(t, cred.ID)
+	assert.Equal(t, "my-profile", cred.Label)
+	assert.Equal(t, "AKIATESTIMPORT123", cred.AccessKeyID)
+	assert.Equal(t, "secret123", cred.SecretAccessKey)
+	assert.Equal(t, "us-east-1", cred.Region)
+	assert.Equal(t, "123456789012", cred.AccountID)
+	assert.False(t, cred.CreatedAt.IsZero())
+
+	// Verify it can be retrieved by access key ID
+	fetched, err := store.GetByAccessKeyID("AKIATESTIMPORT123")
+	require.NoError(t, err)
+	assert.Equal(t, cred.ID, fetched.ID)
+	assert.Equal(t, "AKIATESTIMPORT123", fetched.AccessKeyID)
+	assert.Equal(t, "secret123", fetched.SecretAccessKey)
+	assert.Equal(t, "my-profile", fetched.Label)
+
+	// Verify it appears in List
+	list, err := store.List()
+	require.NoError(t, err)
+	assert.Len(t, list, 1)
+	assert.Equal(t, "AKIATESTIMPORT123", list[0].AccessKeyID)
+	// List should NOT include the secret
+	assert.Empty(t, list[0].SecretAccessKey)
+}
+
+func TestImport_MemoryStore(t *testing.T) {
+	store := credentials.NewMemoryCredentialStore()
+	defer store.Close()
+	runImportTests(t, store)
+}
+
+func TestImport_SQLiteStore(t *testing.T) {
+	db := newTestDB(t)
+	store, err := credentials.NewSQLiteCredentialStore(db)
+	require.NoError(t, err)
+	defer store.Close()
+	runImportTests(t, store)
+}
+
+func TestImport_BadgerStore(t *testing.T) {
+	db := newTestBadgerDB(t)
+	store := credentials.NewBadgerCredentialStore(db.DB())
+	defer store.Close()
+	runImportTests(t, store)
+}
+
+// runImportDuplicateTests verifies that importing a credential with a
+// duplicate access key ID returns an error.
+func runImportDuplicateTests(t *testing.T, store credentials.CredentialStore) {
+	t.Helper()
+
+	// Import the first credential
+	_, err := store.Import("first", "AKIADUP001", "secret1", "us-east-1", "111111111111")
+	require.NoError(t, err)
+
+	// Importing a second credential with the same access key ID should fail
+	_, err = store.Import("second", "AKIADUP001", "secret2", "eu-west-1", "222222222222")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+
+	// Verify only one credential exists
+	list, err := store.List()
+	require.NoError(t, err)
+	assert.Len(t, list, 1)
+}
+
+func TestImport_DuplicateAccessKeyID_Memory(t *testing.T) {
+	store := credentials.NewMemoryCredentialStore()
+	defer store.Close()
+	runImportDuplicateTests(t, store)
+}
+
+func TestImport_DuplicateAccessKeyID_SQLite(t *testing.T) {
+	db := newTestDB(t)
+	store, err := credentials.NewSQLiteCredentialStore(db)
+	require.NoError(t, err)
+	defer store.Close()
+	runImportDuplicateTests(t, store)
+}
+
+func TestImport_DuplicateAccessKeyID_Badger(t *testing.T) {
+	db := newTestBadgerDB(t)
+	store := credentials.NewBadgerCredentialStore(db.DB())
+	defer store.Close()
+	runImportDuplicateTests(t, store)
+}
+
+// runImportMultipleTests verifies that multiple credentials can be imported
+// and all are retrievable.
+func runImportMultipleTests(t *testing.T, store credentials.CredentialStore) {
+	t.Helper()
+
+	creds := []struct {
+		label, accessKeyID, secret, region, accountID string
+	}{
+		{"prod", "AKIAPROD001", "prodsecret", "us-east-1", "111111111111"},
+		{"dev", "AKIADEV002", "devsecret", "eu-west-1", "222222222222"},
+		{"staging", "AKIASTG003", "stgsecret", "ap-southeast-2", "333333333333"},
+	}
+
+	for _, c := range creds {
+		_, err := store.Import(c.label, c.accessKeyID, c.secret, c.region, c.accountID)
+		require.NoError(t, err)
+	}
+
+	// Verify all three are retrievable
+	list, err := store.List()
+	require.NoError(t, err)
+	assert.Len(t, list, 3)
+
+	// Verify each can be fetched by access key ID with the correct secret
+	for _, c := range creds {
+		fetched, err := store.GetByAccessKeyID(c.accessKeyID)
+		require.NoError(t, err)
+		assert.Equal(t, c.label, fetched.Label)
+		assert.Equal(t, c.secret, fetched.SecretAccessKey)
+		assert.Equal(t, c.region, fetched.Region)
+		assert.Equal(t, c.accountID, fetched.AccountID)
+	}
+}
+
+func TestImport_MultipleCredentials_Memory(t *testing.T) {
+	store := credentials.NewMemoryCredentialStore()
+	defer store.Close()
+	runImportMultipleTests(t, store)
+}
+
+func TestImport_MultipleCredentials_SQLite(t *testing.T) {
+	db := newTestDB(t)
+	store, err := credentials.NewSQLiteCredentialStore(db)
+	require.NoError(t, err)
+	defer store.Close()
+	runImportMultipleTests(t, store)
+}
+
+func TestImport_MultipleCredentials_Badger(t *testing.T) {
+	db := newTestBadgerDB(t)
+	store := credentials.NewBadgerCredentialStore(db.DB())
+	defer store.Close()
+	runImportMultipleTests(t, store)
+}

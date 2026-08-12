@@ -351,3 +351,10 @@ Documentation is part of the codebase — it must stay accurate or it becomes mi
 2. Implement `func(http.Handler) http.Handler`
 3. Wire it in `main.go` via `middleware.Chain()`
 4. First middleware in the chain = outermost wrapper
+
+### Seed Initial Credentials at Startup
+1. Add entries to `auth.initialCredentials` in `config.yaml` (each with `accessKeyId`, `secretAccessKey`, optional `label`, `region`, `accountId`)
+2. The `seedInitialCredentials()` function in `apps/go/server/startup_credentials.go` calls `credStore.Import()` for each entry after the credential store is created and startup queues are seeded
+3. `Import` is a method on `CredentialStore` that takes explicit access key ID + secret (unlike `Create` which auto-generates them)
+4. If a credential with the same `accessKeyId` already exists, startup fails with an error (no silent skip, no upsert)
+5. Region and account ID default to `sqs.region` and `sqs.accountId` when not specified per-credential

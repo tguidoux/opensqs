@@ -39,6 +39,43 @@ func (s *MemoryCredentialStore) Create(label, region, accountID string) (*Creden
 	return cred, nil
 }
 
+// Import stores a credential with an explicitly provided access key ID and
+// secret access key. Returns an error if a credential with the same access
+// key ID already exists.
+func (s *MemoryCredentialStore) Import(label, accessKeyID, secretAccessKey, region, accountID string) (*Credential, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check for duplicate access key ID
+	for _, c := range s.credentials {
+		if c.AccessKeyID == accessKeyID {
+			return nil, fmt.Errorf("credential with access key ID %q already exists", accessKeyID)
+		}
+	}
+
+	cred := &Credential{
+		ID:              GenerateID(),
+		Label:           label,
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		Region:          region,
+		AccountID:       accountID,
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	s.credentials[cred.ID] = cred
+
+	return &Credential{
+		ID:              cred.ID,
+		Label:           cred.Label,
+		AccessKeyID:     cred.AccessKeyID,
+		SecretAccessKey: cred.SecretAccessKey,
+		Region:          cred.Region,
+		AccountID:       cred.AccountID,
+		CreatedAt:       cred.CreatedAt,
+	}, nil
+}
+
 // List returns all stored credentials without secret access keys.
 func (s *MemoryCredentialStore) List() ([]*Credential, error) {
 	s.mu.RLock()
