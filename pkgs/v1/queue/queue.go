@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -16,11 +17,13 @@ import (
 
 // Queue represents an SQS queue with its attributes and message store.
 type Queue struct {
-	name       string
-	attributes *QueueAttributes
-	tagsMu     sync.RWMutex
-	tags       map[string]string
-	store      store.Store
+	name         string
+	attributes   *QueueAttributes
+	tagsMu       sync.RWMutex
+	tags         map[string]string
+	store        store.Store
+	purgeMu      sync.Mutex
+	lastPurgedAt time.Time
 }
 
 // NewQueue creates a new Queue instance with the given name and default attributes.
@@ -81,6 +84,33 @@ func (q *Queue) IsFifo() bool {
 	val, _ := q.attributes.GetAttribute(types.AttributeFifoQueue)
 	b, _ := strconv.ParseBool(val)
 	return b
+}
+
+// purgeCooldown is the minimum time between PurgeQueue calls on the same queue.
+// AWS SQS enforces a 60-second cooldown to prevent abuse.
+const purgeCooldown = 60 * time.Second
+
+// CheckPurgeCooldown returns an error if the queue was purged within the
+// cooldown window (60 seconds). On success, the caller should call
+// MarkPurged() after the purge completes.
+func (q *Queue) CheckPurgeCooldown() error {
+	q.purgeMu.Lock()
+	defer q.purgeMu.Unlock()
+	if !q.lastPurgedAt.IsZero() && time.Since(q.lastPurgedAt) < purgeCooldown {
+		return NewPurgeQueueInProgress(fmt.Sprintf(
+			"Must wait %d seconds before purging queue %s again.",
+			int(purgeCooldown.Seconds()-time.Since(q.lastPurgedAt).Seconds())+1,
+			q.name,
+		))
+	}
+	return nil
+}
+
+// MarkPurged records that a purge was performed, starting the cooldown window.
+func (q *Queue) MarkPurged() {
+	q.purgeMu.Lock()
+	defer q.purgeMu.Unlock()
+	q.lastPurgedAt = time.Now()
 }
 
 // GetQueueArn returns the queue ARN from attributes.

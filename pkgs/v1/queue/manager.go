@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
@@ -22,11 +23,13 @@ type QueueManager struct {
 	region       string
 	serverSecret []byte
 	storeFactory store.StoreFactory
+	log          logger.LoggerInterface
 }
 
 // NewQueueManager creates a new QueueManager.
 // The storeFactory parameter determines which Store implementation is used for each queue.
-func NewQueueManager(nodeAddress, accountID, region string, serverSecret []byte, storeFactory store.StoreFactory) *QueueManager {
+// The log parameter is used for structured logging within the manager.
+func NewQueueManager(nodeAddress, accountID, region string, serverSecret []byte, storeFactory store.StoreFactory, log logger.LoggerInterface) *QueueManager {
 	return &QueueManager{
 		queues:       make(map[string]*Queue),
 		nodeAddress:  nodeAddress,
@@ -34,6 +37,7 @@ func NewQueueManager(nodeAddress, accountID, region string, serverSecret []byte,
 		region:       region,
 		serverSecret: serverSecret,
 		storeFactory: storeFactory,
+		log:          log,
 	}
 }
 
@@ -62,6 +66,8 @@ func (qm *QueueManager) CreateQueue(name string, attrs *QueueAttributes) (*Queue
 	storeCfg := store.StoreConfig{
 		IsFifo:                    attrs.FifoQueue,
 		ContentBasedDeduplication: attrs.ContentBasedDeduplication,
+		Log:                       qm.log,
+		MessageRetentionPeriod:    attrs.MessageRetentionPeriod,
 	}
 
 	if attrs.RedrivePolicy != "" {
@@ -193,21 +199,22 @@ func (qm *QueueManager) LookupQueueByArn(arn string) (*Queue, error) {
 
 // redriveMessage sends a message to the dead-letter queue identified by the given ARN.
 // Errors are logged but not returned to match SQS behavior (redrive is best-effort).
+// A 5-second timeout context is used since redrive is a background operation
+// that should not block indefinitely.
 func (qm *QueueManager) redriveMessage(dlqArn string, msg *types.Message) {
 	dlqQueue, err := qm.LookupQueueByArn(dlqArn)
 	if err != nil {
-		// DLQ doesn't exist — cannot redrive, message is lost
-		// This matches AWS SQS behavior where a misconfigured DLQ silently drops messages
-		log.Printf("redrive: DLQ %s not found, message %s will be lost: %v", dlqArn, msg.MessageID, err)
+		qm.log.Errorf("redrive: DLQ %s not found, message %s will be lost: %v", dlqArn, msg.MessageID, err)
 		return
 	}
 
-	// Reset message state for redelivery
 	store.PrepareForRedrive(msg)
 
-	// Send to the DLQ with no delay
-	if err := dlqQueue.Store().SendMessage(context.Background(), msg, 0); err != nil {
-		log.Printf("redrive: failed to send message %s to DLQ %s: %v", msg.MessageID, dlqArn, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := dlqQueue.Store().SendMessage(ctx, msg, 0); err != nil {
+		qm.log.Errorf("redrive: failed to send message %s to DLQ %s: %v", msg.MessageID, dlqArn, err)
 	}
 }
 

@@ -158,3 +158,15 @@ func NewUnsupportedOperation(msg string) *SQSError {
 		ErrorMessageValue: msg,
 	}
 }
+
+func NewPurgeQueueInProgress(msg string) *SQSError {
+	if msg == "" {
+		msg = "There is a purge request already in progress for this queue."
+	}
+	return &SQSError{
+		CodeValue:         "AWS.SimpleQueueService.PurgeQueueInProgress",
+		HTTPStatusValue:   403,
+		ErrorTypeValue:    "Sender",
+		ErrorMessageValue: msg,
+	}
+}
