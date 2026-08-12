@@ -257,6 +257,28 @@ func (a *QueueAttributes) GetRedrivePolicy() string {
 	return a.RedrivePolicy
 }
 
+// cloneUnlocked copies only attribute data fields.
+// The caller must already hold the mutex if concurrent access is possible.
+func (a *QueueAttributes) cloneUnlocked() QueueAttributes {
+	return QueueAttributes{
+		VisibilityTimeout:             a.VisibilityTimeout,
+		DelaySeconds:                  a.DelaySeconds,
+		MaximumMessageSize:            a.MaximumMessageSize,
+		MessageRetentionPeriod:        a.MessageRetentionPeriod,
+		ReceiveMessageWaitTimeSeconds: a.ReceiveMessageWaitTimeSeconds,
+		QueueArn:                      a.QueueArn,
+		Policy:                        a.Policy,
+		RedrivePolicy:                 a.RedrivePolicy,
+		FifoQueue:                     a.FifoQueue,
+		ContentBasedDeduplication:     a.ContentBasedDeduplication,
+		KmsMasterKeyId:                a.KmsMasterKeyId,
+		KmsDataKeyReusePeriodSeconds:  a.KmsDataKeyReusePeriodSeconds,
+		DeduplicationScope:            a.DeduplicationScope,
+		FifoThroughputLimit:           a.FifoThroughputLimit,
+		SqsManagedSseEnabled:          a.SqsManagedSseEnabled,
+	}
+}
+
 // SetAttributes sets multiple attributes atomically under a single lock.
 // If any attribute fails validation, no attributes are changed.
 func (a *QueueAttributes) SetAttributes(attrs map[string]string) error {
@@ -265,14 +287,28 @@ func (a *QueueAttributes) SetAttributes(attrs map[string]string) error {
 
 	// Validate all attributes against a copy so updates remain atomic.
 	// If any attribute is invalid, we leave the original object unchanged.
-	clone := *a
+	clone := a.cloneUnlocked()
 	for name, value := range attrs {
 		if err := clone.validateAndSet(name, value); err != nil {
 			return err
 		}
 	}
 
-	*a = clone
+	a.VisibilityTimeout = clone.VisibilityTimeout
+	a.DelaySeconds = clone.DelaySeconds
+	a.MaximumMessageSize = clone.MaximumMessageSize
+	a.MessageRetentionPeriod = clone.MessageRetentionPeriod
+	a.ReceiveMessageWaitTimeSeconds = clone.ReceiveMessageWaitTimeSeconds
+	a.QueueArn = clone.QueueArn
+	a.Policy = clone.Policy
+	a.RedrivePolicy = clone.RedrivePolicy
+	a.FifoQueue = clone.FifoQueue
+	a.ContentBasedDeduplication = clone.ContentBasedDeduplication
+	a.KmsMasterKeyId = clone.KmsMasterKeyId
+	a.KmsDataKeyReusePeriodSeconds = clone.KmsDataKeyReusePeriodSeconds
+	a.DeduplicationScope = clone.DeduplicationScope
+	a.FifoThroughputLimit = clone.FifoThroughputLimit
+	a.SqsManagedSseEnabled = clone.SqsManagedSseEnabled
 	return nil
 }
 
