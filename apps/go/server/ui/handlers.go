@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"crypto/md5"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/tguidoux/opensqs/pkgs/v1/id"
 	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/credentials"
@@ -299,6 +302,12 @@ func (h *handler) handleCreateQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate queue name: alphanumeric, hyphens, underscores, and optional .fifo suffix
+	if !isValidQueueName(queueName) {
+		http.Redirect(w, r, "/queues/new?error=Queue+name+can+only+contain+alphanumeric+characters,+hyphens,+and+underscores", http.StatusSeeOther)
+		return
+	}
+
 	attrs := queue.NewDefaultQueueAttributes()
 
 	if r.FormValue("fifoQueue") == "on" {
@@ -435,8 +444,9 @@ func (h *handler) handleQueueDetail(w http.ResponseWriter, r *http.Request, queu
 
 	attrPairs := buildAttrPairs(attrs)
 
-	// Receive messages for display (non-destructive peek via short visibility timeout)
-	msgs, err := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
+	// Peek messages for display using 0-second visibility timeout so they
+	// remain immediately visible to other consumers (non-destructive peek).
+	msgs, err := q.Store().ReceiveMessages(r.Context(), 10, 0, 0)
 	if err != nil {
 		h.log.Errorf("failed to receive messages for queue %q: %v", queueName, err)
 	}
@@ -536,7 +546,9 @@ func (h *handler) handleSendMessage(w http.ResponseWriter, r *http.Request, queu
 	}
 
 	msg := &types.Message{
-		Body: body,
+		MessageID: id.NewUUID(),
+		Body:      body,
+		MD5OfBody: computeMD5(body),
 	}
 
 	// FIFO-specific fields
@@ -732,7 +744,8 @@ func (h *handler) handleAPIQueueMessages(w http.ResponseWriter, r *http.Request)
 
 	// If sub-path is "messages", return message list
 	if len(parts) == 2 && parts[1] == "messages" {
-		msgs, err := q.Store().ReceiveMessages(r.Context(), 10, 1, 0)
+		// Peek with 0-second visibility timeout (non-destructive)
+		msgs, err := q.Store().ReceiveMessages(r.Context(), 10, 0, 0)
 		if err != nil {
 			h.log.Errorf("failed to receive messages for queue %q: %v", queueName, err)
 		}
@@ -813,17 +826,18 @@ func toPtr[T any](v T) *T {
 
 // buildAttrPairs converts QueueAttributes into a sorted list of name-value pairs for display.
 func buildAttrPairs(attrs *queue.QueueAttributes) []attrPair {
+	all := attrs.AllAttributes()
 	pairs := []attrPair{
-		{"VisibilityTimeout", strconv.Itoa(attrs.VisibilityTimeout)},
-		{"MaximumMessageSize", strconv.Itoa(attrs.MaximumMessageSize)},
-		{"MessageRetentionPeriod", strconv.Itoa(attrs.MessageRetentionPeriod)},
-		{"DelaySeconds", strconv.Itoa(attrs.DelaySeconds)},
-		{"ReceiveMessageWaitTimeSeconds", strconv.Itoa(attrs.ReceiveMessageWaitTimeSeconds)},
-		{"FifoQueue", strconv.FormatBool(attrs.FifoQueue)},
-		{"ContentBasedDeduplication", strconv.FormatBool(attrs.ContentBasedDeduplication)},
-		{"QueueArn", attrs.QueueArn},
-		{"RedrivePolicy", attrs.RedrivePolicy},
-		{"SqsManagedSseEnabled", strconv.FormatBool(attrs.SqsManagedSseEnabled)},
+		{"VisibilityTimeout", all[types.AttributeVisibilityTimeout]},
+		{"MaximumMessageSize", all[types.AttributeMaximumMessageSize]},
+		{"MessageRetentionPeriod", all[types.AttributeMessageRetentionPeriod]},
+		{"DelaySeconds", all[types.AttributeDelaySeconds]},
+		{"ReceiveMessageWaitTimeSeconds", all[types.AttributeReceiveMessageWaitTimeSeconds]},
+		{"FifoQueue", all[types.AttributeFifoQueue]},
+		{"ContentBasedDeduplication", all[types.AttributeContentBasedDeduplication]},
+		{"QueueArn", all[types.AttributeQueueArn]},
+		{"RedrivePolicy", all[types.AttributeRedrivePolicy]},
+		{"SqsManagedSseEnabled", all[types.AttributeSqsManagedSseEnabled]},
 	}
 	return pairs
 }
@@ -947,4 +961,21 @@ func gatherRaw(mfs []*dto.MetricFamily) string {
 		sb.WriteByte('\n')
 	}
 	return sb.String()
+}
+
+// computeMD5 returns the hex-encoded MD5 hash of the input string.
+func computeMD5(s string) string {
+	h := md5.Sum([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// isValidQueueName checks if a queue name contains only allowed characters.
+// Allowed: alphanumeric, hyphens, underscores, and optional .fifo suffix.
+func isValidQueueName(name string) bool {
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+			return false
+		}
+	}
+	return true
 }
