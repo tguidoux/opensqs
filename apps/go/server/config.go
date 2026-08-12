@@ -169,6 +169,33 @@ type AuthConfig struct {
 	// Enabled controls whether credential authentication is active.
 	// Defaults to true when omitted (enabled by default).
 	Enabled *bool `yaml:"enabled"`
+	// InitialCredentials is an optional list of pre-existing credentials
+	// to seed into the credential store at startup. This is useful when you
+	// already have AWS-style credentials (e.g. from an external identity
+	// provider) and want to use them with OpenSQS from the first boot,
+	// without having to create credentials via the UI first.
+	// If a credential with the same accessKeyId already exists in the
+	// store, startup will fail with an error.
+	InitialCredentials []InitialCredential `yaml:"initialCredentials"`
+}
+
+// InitialCredential defines a credential to import at startup.
+// Unlike credentials created via the UI (which auto-generate the access
+// key ID and secret), these fields are provided explicitly.
+type InitialCredential struct {
+	// Label is a human-readable name for the credential.
+	// Defaults to "imported" if empty.
+	Label string `yaml:"label"`
+	// AccessKeyID is the AWS-style access key ID (e.g. "AKIA...").
+	AccessKeyID string `yaml:"accessKeyId"`
+	// SecretAccessKey is the AWS-style secret access key.
+	SecretAccessKey string `yaml:"secretAccessKey"`
+	// Region is the AWS region for this credential.
+	// If empty, defaults to sqs.region from the config.
+	Region string `yaml:"region"`
+	// AccountID is the AWS account ID for this credential.
+	// If empty, defaults to sqs.accountId from the config.
+	AccountID string `yaml:"accountId"`
 }
 
 // IsEnabled returns true unless explicitly set to false.
@@ -206,6 +233,14 @@ func (c ServerConfig) Validate() error {
 	}
 	if c.SQS.ServerSecret == "" {
 		return fmt.Errorf("sqs.serverSecret is required")
+	}
+	for i, ic := range c.Auth.InitialCredentials {
+		if ic.AccessKeyID == "" {
+			return fmt.Errorf("auth.initialCredentials[%d].accessKeyId is required", i)
+		}
+		if ic.SecretAccessKey == "" {
+			return fmt.Errorf("auth.initialCredentials[%d].secretAccessKey is required", i)
+		}
 	}
 	return nil
 }

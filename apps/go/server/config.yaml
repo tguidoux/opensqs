@@ -65,6 +65,18 @@ rateLimit:
 # Set to false to allow unauthenticated requests.
 auth:
   enabled: true
+  # Optional: pre-seed the credential store with existing AWS-style
+  # credentials at startup. Useful when you already have credentials
+  # from an external identity provider and want to use the same AWS
+  # profile against OpenSQS with auth enabled from the first boot.
+  # If a credential with the same accessKeyId already exists,
+  # startup will fail with an error.
+  # initialCredentials:
+  #   - label: "my-aws-profile"
+  #     accessKeyId: "AKIA..."
+  #     secretAccessKey: "..."
+  #     # region: "us-east-1"        # optional, defaults to sqs.region
+  #     # accountId: "123456789012"  # optional, defaults to sqs.accountId
 
 # Optional: queues created at startup
 queues:

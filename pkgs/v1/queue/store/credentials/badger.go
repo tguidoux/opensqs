@@ -51,6 +51,64 @@ func (s *BadgerCredentialStore) Create(label, region, accountID string) (*Creden
 	return cred, nil
 }
 
+// Import stores a credential with an explicitly provided access key ID and
+// secret access key. Returns an error if a credential with the same access
+// key ID already exists.
+func (s *BadgerCredentialStore) Import(label, accessKeyID, secretAccessKey, region, accountID string) (*Credential, error) {
+	// Check for duplicate access key ID in a read transaction
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte(badgerKeyPrefix)
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			if err := item.Value(func(val []byte) error {
+				var c Credential
+				if err := json.Unmarshal(val, &c); err != nil {
+					return err
+				}
+				if c.AccessKeyID == accessKeyID {
+					return fmt.Errorf("credential with access key ID %q already exists", accessKeyID)
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cred := &Credential{
+		ID:              GenerateID(),
+		Label:           label,
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		Region:          region,
+		AccountID:       accountID,
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	data, err := json.Marshal(cred)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential: %w", err)
+	}
+
+	key := badgerKeyPrefix + cred.ID
+	err = s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(key), data)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to store credential: %w", err)
+	}
+
+	return cred, nil
+}
+
 // List returns all stored credentials without secret access keys.
 func (s *BadgerCredentialStore) List() ([]*Credential, error) {
 	var result []*Credential

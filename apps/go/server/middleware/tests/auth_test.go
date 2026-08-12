@@ -63,6 +63,9 @@ func newFakeCredStore(creds ...*credentials.Credential) *fakeCredStore {
 func (s *fakeCredStore) Create(label, region, accountID string) (*credentials.Credential, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (s *fakeCredStore) Import(label, accessKeyID, secretAccessKey, region, accountID string) (*credentials.Credential, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 func (s *fakeCredStore) List() ([]*credentials.Credential, error) {
 	return nil, fmt.Errorf("not implemented")
 }

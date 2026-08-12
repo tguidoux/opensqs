@@ -137,6 +137,11 @@ func main() {
 		}
 	}
 
+	// Seed initial credentials from config (optional)
+	// This allows users to bring their own AWS-style credentials and use
+	// them with OpenSQS from the first boot, without the UI.
+	seedInitialCredentials(credStore, cfg.Auth, cfg.SQS.Region, cfg.SQS.AccountID, log)
+
 	// Create the metrics collector (if metrics enabled)
 	var metricsCollector *metrics.Collector
 	if cfg.Metrics.Enabled {

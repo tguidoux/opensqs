@@ -8,6 +8,7 @@ opensqs_go_library(
         "error_response.go",
         "main.go",
         "request_handler.go",
+        "startup_credentials.go",
         "startup_queues.go",
     ],
     importpath = "github.com/tguidoux/opensqs/apps/go/server",

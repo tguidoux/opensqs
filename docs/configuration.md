@@ -170,6 +170,43 @@ requestLogging:
 |-------|-------------|--------|
 | `enabled` | If `true`, logs each HTTP request with request ID, method, path, status, duration, etc. | `false` |
 
+### Authentication (`auth`)
+
+```yaml
+auth:
+  enabled: true           # Enable or disable credential-based authentication
+  # Optional: pre-seed the credential store with existing credentials
+  initialCredentials:
+    - label: "my-aws-profile"
+      accessKeyId: "AKIA..."
+      secretAccessKey: "..."
+      # region: "us-east-1"        # optional, defaults to sqs.region
+      # accountId: "123456789012"  # optional, defaults to sqs.accountId
+```
+
+| Field | Description | Default |
+|-------|-------------|--------|
+| `enabled` | If `true` (or omitted), SQS API requests must include valid credentials | `true` |
+| `initialCredentials` | Optional list of pre-existing credentials to seed at startup | `[]` (empty) |
+
+#### Initial Credentials
+
+The `initialCredentials` list allows you to import existing AWS-style credentials into the OpenSQS credential store at startup. This is useful when you already have credentials from an external identity provider and want to use the same AWS profile against OpenSQS with authentication enabled from the first boot — without having to create credentials via the Web UI first.
+
+Each entry supports:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `label` | No | Human-readable name. Defaults to `"imported"` if empty. |
+| `accessKeyId` | Yes | AWS-style access key ID (e.g. `"AKIA..."`). |
+| `secretAccessKey` | Yes | AWS-style secret access key. |
+| `region` | No | AWS region. Defaults to `sqs.region` if empty. |
+| `accountId` | No | AWS account ID. Defaults to `sqs.accountId` if empty. |
+
+**Conflict handling:** If a credential with the same `accessKeyId` already exists in the store (e.g. from a previous startup with a persistent backend like SQLite or BadgerDB), the server will fail to start with an error. Remove the entry from the config or delete the existing credential via the UI before restarting.
+
+**Security note:** For local development, storing credentials in `config.yaml` is acceptable. For non-local environments, use environment variable overrides (e.g. `SQS__AUTH__INITIALCREDENTIALS__0__ACCESSKEYID`) or mount a Kubernetes Secret into the config file. Never commit real credentials to source control.
+
 ### Environment
 
 ```yaml
