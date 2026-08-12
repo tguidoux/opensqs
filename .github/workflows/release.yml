@@ -74,9 +74,21 @@ jobs:
           repository-cache: true
 
       - name: Login to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        env:
+          # Use a PAT (with write:packages scope) if available — needed for first-time
+          # package creation on GHCR. After the package exists, GITHUB_TOKEN works fine.
+          CR_TOKEN: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$CR_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # Verify the config file exists and contains ghcr.io auth
+          cat ~/.docker/config.json | jq 'has("auths") and .auths["ghcr.io"] != null'
 
       - name: Run release tool
+        env:
+          DOCKER_CONFIG: /home/runner/.docker
+          HOME: /home/runner
+          # Pass the same token through to Bazel/crane for GHCR auth
+          CR_TOKEN: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
         run: |
           ARGS=()
 
