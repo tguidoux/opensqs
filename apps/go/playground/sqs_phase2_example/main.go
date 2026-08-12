@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
@@ -41,6 +42,7 @@ func main() {
 		"us-east-1",
 		[]byte("my-secret-key"),
 		factory,
+		logger.New("sqs-phase2-example", logger.UncontextualLoggerType),
 	)
 
 	q, err := manager.CreateQueue("phase2-demo", nil)

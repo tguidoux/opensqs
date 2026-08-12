@@ -21,6 +21,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
@@ -44,6 +45,7 @@ func main() {
 		"us-east-1",
 		[]byte("my-secret-key"),
 		factory,
+		logger.New("sqs-example", logger.UncontextualLoggerType),
 	)
 
 	// 2. Create a queue.
