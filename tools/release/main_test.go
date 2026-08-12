@@ -36,6 +36,13 @@ func TestParseFlags_Version(t *testing.T) {
 	}
 }
 
+func TestParseFlags_VersionWithoutVPrefix(t *testing.T) {
+	f := parseFlags([]string{"0.1.0"})
+	if f.version != "v0.1.0" {
+		t.Errorf("expected v0.1.0, got %s", f.version)
+	}
+}
+
 func TestParseFlags_SkipFlags(t *testing.T) {
 	f := parseFlags([]string{"--skip-image", "--skip-tag", "--skip-release"})
 	if !f.skipImage {

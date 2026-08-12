@@ -102,8 +102,13 @@ func parseFlags(args []string) flags {
 			printUsage()
 			os.Exit(0)
 		default:
-			if strings.HasPrefix(arg, "v") && regexp.MustCompile(versionRegex).MatchString(arg) {
-				f.version = arg
+			// Accept both "v1.2.3" and "1.2.3" — normalize to "v1.2.3"
+			normalized := arg
+			if !strings.HasPrefix(normalized, "v") {
+				normalized = "v" + normalized
+			}
+			if regexp.MustCompile(versionRegex).MatchString(normalized) {
+				f.version = normalized
 			} else {
 				fail("Unknown argument: %s", arg)
 			}
