@@ -43,7 +43,7 @@ Environment enum: LOCAL, STAGING, PROD using `env.Environment` type.
 ## Deployment
 Use `opensqs_go_image` macros for containerization.
 All images are based on distroless for security.
-Registry: registry.opensqs.io namespace.
+Registry: ghcr.io/tguidoux/opensqs namespace.
 
 ## Testing
 Go: Use `opensqs_go_test` with testify/assert for assertions.

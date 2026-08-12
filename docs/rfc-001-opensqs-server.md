@@ -846,7 +846,7 @@ A dedicated test suite that runs the same operations against both OpenSQS and re
 ### 11.1 Docker
 
 ```bash
-docker run -p 9324:9324 -p 9325:9325 registry.opensqs.io/server:latest
+docker run -p 9324:9324 -p 9325:9325 ghcr.io/tguidoux/opensqs/opensqs-server:latest
 ```
 
 Built using the monorepo's `opensqs_go_image` macro with distroless base image.

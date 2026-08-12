@@ -24,14 +24,9 @@
         }
     },
     "structtag": {
-        "exclude_files": {
-            "pkgs/v1/schemaorg/generated/.*": "generated schema.org types have duplicate JSON tags from struct embedding"
-        }
+        "exclude_files": {}
     },
     "nilness": {
-        "exclude_files": {
-            "pkgs/v1/majorisv3/api/client/generated/.*": "generated OpenAPI client code cannot be modified",
-            "pkgs/v1/sentinel/client/generated/.*": "generated OpenAPI client code cannot be modified"
-        }
+        "exclude_files": {}
     }
 }

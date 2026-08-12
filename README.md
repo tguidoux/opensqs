@@ -131,8 +131,10 @@ opensqs/
 │       │   ├── protocol/        # Query & JSON protocol parsers
 │       │   └── health/          # Health check server
 │       └── playground/          # Example programs
-│           ├── cmd_hello_world/
-│           └── sqs_example/     # Queue library usage example
+│           ├── sqs_example/     # Queue library usage example
+│           ├── sqs_dlq_example/ # Dead-letter queue example
+│           ├── sqs_fifo_example/ # FIFO queue example
+│           └── sqs_phase2_example/ # Phase 2 features example
 ├── pkgs/v1/
 │   ├── config/                  # YAML config loading with validation
 │   ├── environment/             # Environment enum (LOCAL, STAGING, PROD)
@@ -191,7 +193,7 @@ sqs:
   region: "us-east-1"
   storageType: "memory"
   strictLimits: true
-  serverSecret: "dev-secret-key-change-in-production"
+  serverSecret: "dev-only-not-for-production"
 
 log:
   level: "info"

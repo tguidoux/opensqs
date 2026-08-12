@@ -15,6 +15,5 @@ sources:
   - https://github.com/tguidoux/opensqs
 maintainers:
   - name: OpenSQS Team
-icon: https://raw.githubusercontent.com/tguidoux/opensqs/main/docs/logo.png
 annotations:
   category: Messaging

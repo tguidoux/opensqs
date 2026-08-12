@@ -186,6 +186,14 @@ After adding new test files, run `bazel run //:gazelle` to generate BUILD.bazel 
 
 ## Submitting Changes
 
+### Branch Protection
+
+The `main` branch is protected. All changes must go through a pull request — direct pushes are not allowed. PRs require:
+
+- At least one review approval
+- All CI checks passing
+- Branch must be up to date with `main` before merging
+
 ### Pull Request Process
 
 1. **Fork** the repository and create a feature branch from `main`:
