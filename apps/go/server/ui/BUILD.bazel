@@ -1,0 +1,31 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = [
+        "handlers.go",
+        "server.go",
+    ],
+    embedsrcs = [
+        "static/app.js",
+        "static/style.css",
+        "templates/create_queue.html",
+        "templates/credentials.html",
+        "templates/index.html",
+        "templates/layout.html",
+        "templates/metrics.html",
+        "templates/queue.html",
+    ],
+    importpath = "github.com/tguidoux/opensqs/apps/go/server/ui",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/go/server/serverbase:go_default_library",
+        "//pkgs/v1/id:go_default_library",
+        "//pkgs/v1/logger:go_default_library",
+        "//pkgs/v1/queue:go_default_library",
+        "//pkgs/v1/queue/store/credentials:go_default_library",
+        "//pkgs/v1/queue/types:go_default_library",
+        "@com_github_prometheus_client_golang//prometheus:go_default_library",
+        "@com_github_prometheus_client_model//go:go_default_library",
+    ],
+)

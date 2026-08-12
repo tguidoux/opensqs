@@ -1,0 +1,63 @@
+package tls
+
+import (
+	"crypto/tls"
+	"fmt"
+)
+
+// Config holds TLS configuration for an HTTP server.
+// It mirrors the TLSConfig struct in the server config package
+// but is self-contained so this package has no dependency on the config package.
+type Config struct {
+	// Enabled controls whether TLS is used.
+	Enabled bool
+	// CertFile is the path to the TLS certificate file (PEM).
+	CertFile string
+	// KeyFile is the path to the TLS private key file (PEM).
+	KeyFile string
+}
+
+// LoadTLSConfig loads a TLS certificate and key, returning a *tls.Config
+// suitable for use with http.Server.TLSConfig.
+// If both certFile and keyFile are empty, TLS is considered disabled
+// and the function returns (nil, nil).
+func LoadTLSConfig(certFile, keyFile string) (*tls.Config, error) {
+	if certFile == "" && keyFile == "" {
+		return nil, nil
+	}
+
+	if certFile == "" {
+		return nil, fmt.Errorf("tls key file provided but certificate file is missing")
+	}
+	if keyFile == "" {
+		return nil, fmt.Errorf("tls certificate file provided but key file is missing")
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS key pair: %w", err)
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: []uint16{
+			// TLS 1.2 strong cipher suites
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		},
+	}, nil
+}
+
+// LoadFromConfig loads a TLS config from a Config struct.
+// Returns (nil, nil) when TLS is disabled.
+func LoadFromConfig(cfg Config) (*tls.Config, error) {
+	if !cfg.Enabled {
+		return nil, nil
+	}
+	return LoadTLSConfig(cfg.CertFile, cfg.KeyFile)
+}

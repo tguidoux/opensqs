@@ -83,15 +83,10 @@ func (l *Logger) Log(ctx context.Context, level slog.Level, msg string, extra ..
 		}
 	}
 
-	convertedAttrs := make([]any, len(attrs))
-	for i, attr := range attrs {
-		convertedAttrs[i] = attr
-	}
-
 	// Strip newlines from the message
 	msg = cleanString(msg)
 
-	l.logger.Log(ctx, level, msg, convertedAttrs...)
+	l.logger.LogAttrs(ctx, level, msg, attrs...)
 }
 
 // Debug logs a debug-level message.
@@ -146,11 +141,17 @@ func (l *Logger) Warningf(ctx context.Context, format string, args ...any) {
 }
 
 func (l *Logger) WithExtra(extra ...map[string]any) *Logger {
+	newExtra := make(map[string]any, len(l.extra)+1)
+	maps.Copy(newExtra, l.extra)
 	if len(extra) > 0 && extra[0] != nil {
-		maps.Copy(l.extra, extra[0])
+		maps.Copy(newExtra, extra[0])
 	}
 
-	return l
+	return &Logger{
+		logger: l.logger,
+		name:   l.name,
+		extra:  newExtra,
+	}
 }
 
 // GetWriter returns the output writer (currently always os.Stdout)

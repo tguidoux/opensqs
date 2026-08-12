@@ -1,0 +1,33 @@
+"""
+Platform definitions for multi-architecture container builds.
+"""
+
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+platform(
+    name = "linux_arm64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:arm64",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "linux_amd64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "transition",
+    srcs = ["transition.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@bazel_lib//lib:transitions",
+        "@rules_oci//oci:defs",
+    ],
+)

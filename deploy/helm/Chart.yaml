@@ -1,0 +1,19 @@
+apiVersion: v2
+name: opensqs
+description: OpenSQS - A self-hosted Amazon SQS-compatible message queue server
+type: application
+version: "0.0.7"
+appVersion: "v0.0.7"
+keywords:
+  - sqs
+  - queue
+  - messaging
+  - aws
+  - message-broker
+home: https://github.com/tguidoux/opensqs
+sources:
+  - https://github.com/tguidoux/opensqs
+maintainers:
+  - name: OpenSQS Team
+annotations:
+  category: Messaging

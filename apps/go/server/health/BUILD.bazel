@@ -1,0 +1,9 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = ["server.go"],
+    importpath = "github.com/tguidoux/opensqs/apps/go/server/health",
+    visibility = ["//visibility:public"],
+    deps = ["//apps/go/server/serverbase:go_default_library"],
+)

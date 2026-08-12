@@ -1,0 +1,137 @@
+{{define "content"}}
+<h1>Queue: {{.Name}}</h1>
+
+{{if .Error}}
+<div class="alert alert-error">{{.Error}}</div>
+{{end}}
+{{if .Success}}
+<div class="alert alert-success">{{.Success}}</div>
+{{end}}
+
+<div class="actions-bar">
+    <a href="/" class="btn btn-secondary">← Back to Queues</a>
+    <form method="POST" action="/queues/{{.Name}}/purge" style="display:inline" onsubmit="return confirm('Purge all messages?')">
+        <button type="submit" class="btn btn-warning">Purge Queue</button>
+    </form>
+    <form method="POST" action="/queues/{{.Name}}/delete" style="display:inline" onsubmit="return confirm('Delete this queue? This cannot be undone.')">
+        <button type="submit" class="btn btn-danger">Delete Queue</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>AWS CLI</h2>
+    <p class="hint">Set these environment variables so the AWS CLI talks to this OpenSQS instance, then use the commands below.</p>
+    <div class="form-group">
+        <label>Environment Variables</label>
+        <pre class="export-block" id="cli-env-vars">{{.CLIEnvVars}}</pre>
+        <button type="button" class="btn btn-primary btn-copy" onclick="copyToClipboard('cli-env-vars', this)">Copy</button>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>Send a message</label>
+            <pre class="export-block" id="cli-send">{{.CLISendCommand}}</pre>
+            <button type="button" class="btn btn-primary btn-copy" onclick="copyToClipboard('cli-send', this)">Copy</button>
+        </div>
+        <div class="form-group">
+            <label>Receive messages</label>
+            <pre class="export-block" id="cli-recv">{{.CLIRecvCommand}}</pre>
+            <button type="button" class="btn btn-primary btn-copy" onclick="copyToClipboard('cli-recv', this)">Copy</button>
+        </div>
+    </div>
+</div>
+
+<div class="grid two-col">
+    <div class="card">
+        <h2>Attributes</h2>
+        <table class="table table-compact">
+            <tbody>
+                {{range .Attrs}}
+                <tr>
+                    <th>{{.Name}}</th>
+                    <td>{{.Value}}</td>
+                </tr>
+                {{end}}
+                <tr><th>Available</th><td class="num">{{.Available}}</td></tr>
+                <tr><th>In-Flight</th><td class="num">{{.InFlight}}</td></tr>
+                <tr><th>Delayed</th><td class="num">{{.Delayed}}</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Tags</h2>
+        {{if .Tags}}
+        <table class="table table-compact">
+            <tbody>
+                {{range $key, $val := .Tags}}
+                <tr><th>{{$key}}</th><td>{{$val}}</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No tags set.</p>
+        {{end}}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Send Message</h2>
+    <form method="POST" action="/queues/{{.Name}}/messages">
+        <div class="form-group">
+            <label for="body">Message Body</label>
+            <textarea name="body" id="body" rows="4" required></textarea>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="delaySeconds">Delay (seconds)</label>
+                <input type="number" name="delaySeconds" id="delaySeconds" value="0" min="0" max="900">
+            </div>
+            {{if .IsFifo}}
+            <div class="form-group">
+                <label for="messageGroupId">Message Group ID</label>
+                <input type="text" name="messageGroupId" id="messageGroupId" placeholder="Required for FIFO">
+            </div>
+            <div class="form-group">
+                <label for="messageDeduplicationId">Dedup ID</label>
+                <input type="text" name="messageDeduplicationId" id="messageDeduplicationId" placeholder="Optional">
+            </div>
+            {{end}}
+        </div>
+        <button type="submit" class="btn btn-primary">Send Message</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Messages <span class="muted small">(peek — 1s visibility)</span></h2>
+    {{if .Messages}}
+    <table class="table" id="message-table">
+        <thead>
+            <tr>
+                <th>Message ID</th>
+                <th>Body</th>
+                <th>Receive Count</th>
+                <th>Sent</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Messages}}
+            <tr>
+                <td data-label="Message ID" class="mono">{{.MessageID}}</td>
+                <td data-label="Body" class="body-cell">{{.Body}}</td>
+                <td data-label="Receive Count" class="num">{{.ReceiveCount}}</td>
+                <td data-label="Sent">{{.SentTimestamp}}</td>
+                <td data-label="Actions">
+                    <form method="POST" action="/queues/{{$.Name}}/messages/{{.ReceiptHandle}}/delete" style="display:inline" onsubmit="return confirm('Delete this message?')">
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="empty-state">No messages available.</p>
+    {{end}}
+</div>
+{{end}}

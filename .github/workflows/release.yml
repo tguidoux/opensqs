@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., v0.1.0). Leave empty for auto-increment."
+        required: false
+        type: string
+      skip-image:
+        description: "Skip Bazel image build and push"
+        required: false
+        type: boolean
+        default: false
+      skip-tag:
+        description: "Skip git tag creation and push"
+        required: false
+        type: boolean
+        default: false
+      skip-release:
+        description: "Skip GitHub Release creation"
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: "Create the GitHub Release as a draft"
+        required: false
+        type: boolean
+        default: false
+      pre-release:
+        description: "Mark the GitHub Release as a pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+
+  # ==============================================================================
+  # Run the release tool (tools/release) which handles:
+  #   1. Update Helm Chart version
+  #   2. Commit version bump
+  #   3. Create and push git tag
+  #   4. Build and push OCI image via Bazel (multi-arch, stamped)
+  #   5. Create GitHub Release with auto-generated notes
+  # ==============================================================================
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Only the repository owner can trigger releases
+    if: github.actor == 'tguidoux'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for tag detection and release notes
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Run release tool
+        run: |
+          ARGS=()
+
+          # Version (optional — omit for auto-increment)
+          if [ -n "${{ inputs.version }}" ]; then
+            ARGS+=("${{ inputs.version }}")
+          fi
+
+          # Boolean flags
+          if [ "${{ inputs.skip-image }}" = "true" ]; then
+            ARGS+=("--skip-image")
+          fi
+          if [ "${{ inputs.skip-tag }}" = "true" ]; then
+            ARGS+=("--skip-tag")
+          fi
+          if [ "${{ inputs.skip-release }}" = "true" ]; then
+            ARGS+=("--skip-release")
+          fi
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            ARGS+=("--draft")
+          fi
+          if [ "${{ inputs.pre-release }}" = "true" ]; then
+            ARGS+=("--pre-release")
+          fi
+
+          echo "🚀 Running release tool with: ${ARGS[*]}"
+          bazel run //tools/release:release -- "${ARGS[@]}"

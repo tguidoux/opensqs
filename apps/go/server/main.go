@@ -1,0 +1,324 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/tguidoux/opensqs/apps/go/server/handlers"
+	"github.com/tguidoux/opensqs/apps/go/server/health"
+	"github.com/tguidoux/opensqs/apps/go/server/metrics"
+	"github.com/tguidoux/opensqs/apps/go/server/middleware"
+	tlsconfig "github.com/tguidoux/opensqs/apps/go/server/tls"
+	"github.com/tguidoux/opensqs/apps/go/server/ui"
+	"github.com/tguidoux/opensqs/pkgs/v1/config"
+	env "github.com/tguidoux/opensqs/pkgs/v1/environment"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/badger"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/credentials"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
+	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/sqlite"
+)
+
+func main() {
+	// Load configuration
+	configPath := os.Getenv(config.DefaultConfigEnvVar)
+	if configPath == "" {
+		// Try local file first, then container path
+		if _, err := os.Stat(config.DefaultConfigPath); err == nil {
+			configPath = config.DefaultConfigPath
+		} else {
+			configPath = "/apps/go/server/config.yaml"
+		}
+	}
+	cfg := config.NewConfig[ServerConfig](configPath).Config
+
+	// Initialize logger with configured level
+	var logLevel slog.Level
+	switch strings.ToLower(cfg.Log.Level) {
+	case "debug":
+		logLevel = slog.LevelDebug
+	case "warn", "warning":
+		logLevel = slog.LevelWarn
+	case "error":
+		logLevel = slog.LevelError
+	default:
+		logLevel = slog.LevelInfo
+	}
+	log := logger.New("opensqs-server", logger.UncontextualLoggerType, logLevel)
+
+	log.Info("starting OpenSQS server", map[string]any{
+		"host":         cfg.Server.Host,
+		"port":         cfg.Server.Port,
+		"nodeAddress":  cfg.SQS.NodeAddress,
+		"accountId":    cfg.SQS.AccountID,
+		"region":       cfg.SQS.Region,
+		"storageType":  cfg.SQS.StorageType,
+		"strictLimits": cfg.SQS.StrictLimits,
+		"environment":  cfg.Environment,
+	})
+
+	// Create queue manager
+	limitsMode := queue.StrictMode
+	if !cfg.SQS.StrictLimits {
+		limitsMode = queue.RelaxedMode
+	}
+	limits := queue.NewLimits(limitsMode)
+
+	// Create store factory (memory by default, SQLite or BadgerDB when configured)
+	var storeFactory store.StoreFactory
+	var credStore credentials.CredentialStore
+
+	switch {
+	case cfg.SQS.StorageType == "sqlite" && cfg.SQS.SQLitePath != "":
+		db, err := sql.Open("sqlite", cfg.SQS.SQLitePath)
+		if err != nil {
+			log.Fatalf("failed to open SQLite database: %v", err)
+		}
+		// Enable WAL mode for better concurrent read performance
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			db.Close()
+			log.Fatalf("failed to set SQLite WAL mode: %v", err)
+		}
+		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
+			return sqlite.NewSQLiteStore(db, queueName, visibilityTimeout, serverSecret, sc)
+		}
+		credStore, err = credentials.NewSQLiteCredentialStore(db)
+		if err != nil {
+			db.Close()
+			log.Fatalf("failed to create SQLite credential store: %v", err)
+		}
+		defer db.Close()
+
+	case cfg.SQS.StorageType == "badger" && cfg.SQS.BadgerPath != "":
+		db, err := badger.Open(cfg.SQS.BadgerPath)
+		if err != nil {
+			log.Fatalf("failed to open BadgerDB database: %v", err)
+		}
+		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
+			return badger.NewBadgerStore(db, queueName, visibilityTimeout, serverSecret, sc)
+		}
+		credStore = credentials.NewBadgerCredentialStore(db.DB())
+		defer db.Close()
+
+	default:
+		storeFactory = func(queueName string, visibilityTimeout int, serverSecret []byte, sc store.StoreConfig) (store.Store, error) {
+			return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, sc), nil
+		}
+		credStore = credentials.NewMemoryCredentialStore()
+	}
+
+	manager := queue.NewQueueManager(
+		cfg.SQS.NodeAddress,
+		cfg.SQS.AccountID,
+		cfg.SQS.Region,
+		[]byte(cfg.SQS.ServerSecret),
+		storeFactory,
+		log,
+	)
+
+	// Create startup queues from config
+	for _, sq := range cfg.Queues.Startup {
+		attrs := startupAttrsToQueueAttrs(sq.Attributes)
+		_, err := manager.CreateQueue(sq.Name, attrs)
+		if err != nil {
+			log.Errorf("failed to create startup queue %q: %v", sq.Name, err)
+		} else {
+			log.Infof("created startup queue %q", sq.Name)
+		}
+	}
+
+	// Create the metrics collector (if metrics enabled)
+	var metricsCollector *metrics.Collector
+	if cfg.Metrics.Enabled {
+		metricsCollector = metrics.NewCollector()
+	}
+
+	// Create the action handler
+	handler := handlers.NewHandler(manager, limits, cfg.Queues.AutoCreate, metricsCollector, log)
+
+	// Create the HTTP server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handleSQSRequest(w, r, handler)
+	})
+
+	// Build middleware chain (order matters: outermost first)
+	var middlewares []middleware.Middleware
+	if cfg.RequestLogging.Enabled {
+		middlewares = append(middlewares, middleware.RequestLogger(log))
+	}
+	if cfg.Auth.IsEnabled() {
+		middlewares = append(middlewares, middleware.Auth(credStore, cfg.SQS.Region, log))
+		log.Info("credential authentication enabled")
+	} else {
+		log.Info("credential authentication disabled")
+	}
+	if cfg.RateLimit.Enabled {
+		if cfg.RateLimit.PerQueue {
+			mw, cleanup := middleware.PerQueueRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
+			middlewares = append(middlewares, mw)
+			defer cleanup()
+		} else {
+			middlewares = append(middlewares, middleware.GlobalRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst))
+		}
+	}
+
+	var sqsHandler http.Handler = mux
+	if len(middlewares) > 0 {
+		sqsHandler = middleware.Chain(middlewares...)(mux)
+	}
+
+	// Load TLS config for the SQS API server
+	sqsTLS, err := tlsconfig.LoadFromConfig(cfg.Server.TLS.ToTLSConfig())
+	if err != nil {
+		log.Fatalf("failed to load SQS server TLS config: %v", err)
+	}
+
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Handler:           sqsHandler,
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if sqsTLS != nil {
+		httpServer.TLSConfig = sqsTLS
+	}
+
+	// Start health check server (only for non-local environments)
+	if cfg.Environment != env.LOCAL {
+		healthPort := cfg.Health.Port
+		if healthPort == 0 {
+			healthPort = 8001
+		}
+		healthTLS, err := tlsconfig.LoadFromConfig(cfg.Health.TLS.ToTLSConfig())
+		if err != nil {
+			log.Fatalf("failed to load health server TLS config: %v", err)
+		}
+		healthServer := health.NewServer(healthPort, healthTLS)
+		if healthTLS != nil {
+			healthServer.SetCertFiles(cfg.Health.TLS.CertFile, cfg.Health.TLS.KeyFile)
+		}
+		startServerable(log, "health check", healthPort, healthServer)
+	}
+
+	// Start UI server (if enabled)
+	var uiServer *ui.Server
+	if cfg.UI.Enabled {
+		uiTLS, err := tlsconfig.LoadFromConfig(cfg.UI.TLS.ToTLSConfig())
+		if err != nil {
+			log.Fatalf("failed to load UI server TLS config: %v", err)
+		}
+		uiServer = ui.NewServer(cfg.UI.Port, manager, credStore, log, cfg.Metrics.Enabled, uiTLS)
+		if uiTLS != nil {
+			uiServer.SetCertFiles(cfg.UI.TLS.CertFile, cfg.UI.TLS.KeyFile)
+		}
+		startServerable(log, "UI", cfg.UI.Port, uiServer)
+	}
+
+	// Start metrics server (if enabled)
+	var metricsServer *metrics.Server
+	if cfg.Metrics.Enabled {
+		metricsPort := cfg.Metrics.Port
+		if metricsPort == 0 {
+			metricsPort = 9326
+		}
+		metricsTLS, err := tlsconfig.LoadFromConfig(cfg.Metrics.TLS.ToTLSConfig())
+		if err != nil {
+			log.Fatalf("failed to load metrics server TLS config: %v", err)
+		}
+		metricsServer = metrics.NewServer(metricsPort, metricsTLS)
+		if metricsTLS != nil {
+			metricsServer.SetCertFiles(cfg.Metrics.TLS.CertFile, cfg.Metrics.TLS.KeyFile)
+		}
+		startServerable(log, "metrics", metricsPort, metricsServer)
+	}
+
+	// Start HTTP server in goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Infof("starting SQS server on %s:%d", cfg.Server.Host, cfg.Server.Port)
+		var err error
+		if sqsTLS != nil {
+			err = httpServer.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+		} else {
+			err = httpServer.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			log.Errorf("failed to start SQS server: %v", err)
+			serverErr <- err
+		}
+	}()
+
+	// Wait for interrupt signal or server error
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case <-quit:
+	case err := <-serverErr:
+		log.Errorf("failed to start server: %v", err)
+	}
+
+	log.Info("shutting down server...")
+
+	// Graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Errorf("failed to shutdown SQS server: %v", err)
+	}
+
+	// Shutdown UI server (if running)
+	if uiServer != nil {
+		if err := uiServer.Stop(ctx); err != nil {
+			log.Errorf("failed to shutdown UI server: %v", err)
+		}
+	}
+
+	// Shutdown metrics server (if running)
+	if metricsServer != nil {
+		if err := metricsServer.Stop(ctx); err != nil {
+			log.Errorf("failed to shutdown metrics server: %v", err)
+		}
+	}
+
+	// Shutdown all queue stores (close databases, release resources)
+	if err := manager.Shutdown(ctx); err != nil {
+		log.Errorf("failed to shutdown queue manager: %v", err)
+	}
+
+	// Shutdown the handler (stops MoveTaskManager cleanup goroutine)
+	handler.Close()
+
+	log.Info("server stopped")
+}
+
+// startServerable starts a server in a goroutine and returns it so the caller
+// can shut it down during the graceful shutdown sequence.
+func startServerable(log logger.LoggerInterface, name string, port int, s interface {
+	Start() error
+	Stop(context.Context) error
+}) interface {
+	Start() error
+	Stop(context.Context) error
+} {
+	go func() {
+		log.Infof("starting %s server on :%d", name, port)
+		if err := s.Start(); err != nil && err != http.ErrServerClosed {
+			log.Errorf("failed to start %s server: %v", name, err)
+		}
+	}()
+	return s
+}

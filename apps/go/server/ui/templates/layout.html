@@ -1,0 +1,38 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSQS — {{.Title}}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">OpenSQS</a>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link">Queues</a>
+            <a href="/credentials" class="nav-link">Credentials</a>
+            {{if .MetricsEnabled}}
+            <a href="/metrics" class="nav-link">Metrics</a>
+            {{end}}
+        </div>
+        <div class="nav-actions">
+            <button id="refresh-toggle" class="btn btn-icon" title="Auto-refresh">
+                <span class="refresh-dot"></span>
+                <span class="refresh-label">5s</span>
+            </button>
+            <button id="theme-toggle" class="btn btn-icon" title="Toggle theme">
+                <span class="theme-icon-dark">🌙</span>
+                <span class="theme-icon-light">☀️</span>
+            </button>
+        </div>
+    </nav>
+    <main class="container">
+        {{template "content" .}}
+    </main>
+    <script src="/static/app.js"></script>
+</body>
+</html>
+{{end}}

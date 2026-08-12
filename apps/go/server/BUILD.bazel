@@ -1,0 +1,49 @@
+load("@tar.bzl", "tar")
+load("//tools/rules/golang:defs.bzl", "opensqs_go_binary", "opensqs_go_image", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = [
+        "config.go",
+        "error_response.go",
+        "main.go",
+        "request_handler.go",
+        "startup_queues.go",
+    ],
+    importpath = "github.com/tguidoux/opensqs/apps/go/server",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//apps/go/server/handlers:go_default_library",
+        "//apps/go/server/health:go_default_library",
+        "//apps/go/server/metrics:go_default_library",
+        "//apps/go/server/middleware:go_default_library",
+        "//apps/go/server/protocol:go_default_library",
+        "//apps/go/server/tls:go_default_library",
+        "//apps/go/server/ui:go_default_library",
+        "//pkgs/v1/config:go_default_library",
+        "//pkgs/v1/environment:go_default_library",
+        "//pkgs/v1/logger:go_default_library",
+        "//pkgs/v1/queue:go_default_library",
+        "//pkgs/v1/queue/store:go_default_library",
+        "//pkgs/v1/queue/store/badger:go_default_library",
+        "//pkgs/v1/queue/store/credentials:go_default_library",
+        "//pkgs/v1/queue/store/memory:go_default_library",
+        "//pkgs/v1/queue/store/sqlite:go_default_library",
+        "//pkgs/v1/queue/types:go_default_library",
+    ],
+)
+
+opensqs_go_binary(
+    name = "opensqs-server",
+    auto_load_config = True,
+    data = ["config.yaml"],
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
+
+opensqs_go_image(
+    name = "opensqs_server_image",
+    binary = ":opensqs-server",
+    image_tags = ["opensqs-server:latest"],
+    registry = "ghcr.io/tguidoux/opensqs",
+)

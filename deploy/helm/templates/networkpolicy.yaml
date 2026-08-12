@@ -1,0 +1,27 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opensqs.fullname" . }}
+  labels:
+    {{- include "opensqs.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opensqs.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- if .Values.networkPolicy.ingress.allowAll }}
+    - {}
+    {{- else }}
+    {{- toYaml .Values.networkPolicy.ingress.rules | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- if .Values.networkPolicy.egress.allowAll }}
+    - {}
+    {{- else }}
+    {{- toYaml .Values.networkPolicy.egress.rules | nindent 4 }}
+    {{- end }}
+{{- end }}

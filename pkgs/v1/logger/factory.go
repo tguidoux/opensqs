@@ -1,3 +1,5 @@
+// Package logger provides structured logging utilities for OpenSQS services,
+// supporting both contextual and uncontextual loggers via slog.
 package logger
 
 import (

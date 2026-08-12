@@ -1,3 +1,5 @@
+// Package config provides YAML-based configuration loading with schema validation
+// and environment-specific overrides for OpenSQS services.
 package config
 
 import (
@@ -15,7 +17,6 @@ const (
 type ConfigI[ConfigType any] interface {
 	Validate() error
 	WithValidation() ConfigType
-	readConfig()
 }
 
 type Config[ConfigType any] struct {

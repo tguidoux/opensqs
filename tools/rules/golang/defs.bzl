@@ -75,7 +75,7 @@ def _go_layers(name, binary):
     """
     Create the layers for a go_binary target.
 
-    By intelligently bunding layers, we can isolate application changes from other
+    By intelligently bundling layers, we can isolate application changes from other
     layers, which can speed up the build process.
 
     At the moment, we just provide a single layer for the binary+runfiles, but
@@ -144,7 +144,7 @@ def opensqs_go_image(name, binary, image_tags, tars = [], base = None, entrypoin
         binary: The name of the opensqs_go_binary to bundle in the container.
         image_tags: A list of tags to apply to the image.
         tars: A list of additional tar files to include in the image.
-        base: The base image to use for the container. If not provided, the default is "@distroless_base".
+        base: The base image to use for the container. If not provided, the default is "@ubuntu_base".
         entrypoint: The entrypoint for the container. If not provided, it is inferred from the binary.
         registry: The container registry to push the image to. If not provided, defaults to REGISTRY.
         **kwargs: are passed to oci_image
@@ -154,7 +154,7 @@ def opensqs_go_image(name, binary, image_tags, tars = [], base = None, entrypoin
             name = "my_image",
             binary = "//path/to:my_py_binary",
             tars = ["//path/to:my_extra_tar"],
-            base = "@distroless_base",
+            base = "@ubuntu_base",
             entrypoint = ["/my_binary"],
             image_tags = ["my-tag:latest"],
         )
@@ -230,11 +230,13 @@ def opensqs_go_image(name, binary, image_tags, tars = [], base = None, entrypoin
         visibility = ["//visibility:public"],
     )
 
-    oci_image_index(
+    # The multi_arch rule already produces an oci_image_index with all platforms.
+    # We alias it as the final target instead of wrapping in another oci_image_index,
+    # which would create a nested manifest list that the oci_image_index script
+    # cannot handle (it expects each manifest to have a .config field).
+    native.alias(
         name = name,
-        images = [
-            ":{}_multi_arch".format(name),
-        ],
+        actual = ":{}_multi_arch".format(name),
         visibility = ["//visibility:public"],
     )
 

@@ -1,0 +1,20 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_binary", "opensqs_go_library", "opensqs_go_test")
+
+opensqs_go_binary(
+    name = "release",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/tguidoux/opensqs/tools/release",
+    visibility = ["//visibility:private"],
+)
+
+opensqs_go_test(
+    name = "go_default_test",
+    srcs = ["main_test.go"],
+    embed = [":go_default_library"],
+)

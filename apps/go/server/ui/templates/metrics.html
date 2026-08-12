@@ -1,0 +1,164 @@
+{{define "content"}}
+<h1>Metrics</h1>
+
+{{if .Error}}
+<div class="alert alert-error">{{.Error}}</div>
+{{end}}
+
+<div id="metrics-dashboard">
+    <!-- API Requests -->
+    <div class="card">
+        <h2>API Requests</h2>
+        <table class="table table-compact" id="api-requests-table">
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Protocol</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Metrics.APIRequests}}
+                <tr>
+                    <td>{{.Action}}</td>
+                    <td><span class="badge badge-standard">{{.Protocol}}</span></td>
+                    <td class="num">{{.Count}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="3" class="empty-state">No API requests recorded yet.</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Queue Sizes -->
+    <div class="card">
+        <h2>Queue Sizes</h2>
+        <table class="table table-compact" id="queue-sizes-table">
+            <thead>
+                <tr>
+                    <th>Queue</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Metrics.QueueSizes}}
+                <tr>
+                    <td>{{.Queue}}</td>
+                    <td><span class="badge {{if eq .Type "available"}}badge-standard{{else if eq .Type "inflight"}}badge-fifo{{else}}badge-standard{{end}}">{{.Type}}</span></td>
+                    <td class="num">{{.Size}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="3" class="empty-state">No queue size metrics recorded yet.</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Message Operations -->
+    <div class="grid two-col">
+        <div class="card">
+            <h2>Messages Sent</h2>
+            <table class="table table-compact" id="messages-sent-table">
+                <thead>
+                    <tr>
+                        <th>Queue</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Metrics.MessagesSent}}
+                    <tr>
+                        <td>{{.Queue}}</td>
+                        <td class="num">{{.Count}}</td>
+                    </tr>
+                    {{else}}
+                    <tr><td colspan="2" class="empty-state">No data yet.</td></tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Messages Received</h2>
+            <table class="table table-compact" id="messages-received-table">
+                <thead>
+                    <tr>
+                        <th>Queue</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Metrics.MessagesReceived}}
+                    <tr>
+                        <td>{{.Queue}}</td>
+                        <td class="num">{{.Count}}</td>
+                    </tr>
+                    {{else}}
+                    <tr><td colspan="2" class="empty-state">No data yet.</td></tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Messages Deleted</h2>
+            <table class="table table-compact" id="messages-deleted-table">
+                <thead>
+                    <tr>
+                        <th>Queue</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Metrics.MessagesDeleted}}
+                    <tr>
+                        <td>{{.Queue}}</td>
+                        <td class="num">{{.Count}}</td>
+                    </tr>
+                    {{else}}
+                    <tr><td colspan="2" class="empty-state">No data yet.</td></tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Move Tasks</h2>
+            <table class="table table-compact" id="move-tasks-table">
+                <thead>
+                    <tr>
+                        <th>Source ARN</th>
+                        <th>Destination ARN</th>
+                        <th>Moved</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Metrics.MoveTaskMessages}}
+                    <tr>
+                        <td class="url-cell">{{.SourceARN}}</td>
+                        <td class="url-cell">{{.DestinationARN}}</td>
+                        <td class="num">{{.Count}}</td>
+                    </tr>
+                    {{else}}
+                    <tr><td colspan="3" class="empty-state">No move task metrics yet.</td></tr>
+                    {{end}}
+                </tbody>
+            </table>
+            <div class="metric-summary">
+                <span class="muted">Active move tasks:</span>
+                <span class="num metric-value">{{.Metrics.MoveTaskActive}}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Raw Prometheus Output -->
+    <div class="card">
+        <details>
+            <summary>Raw Prometheus Output</summary>
+            <pre class="mono raw-metrics" id="raw-metrics">{{.Metrics.Raw}}</pre>
+        </details>
+    </div>
+</div>
+{{end}}

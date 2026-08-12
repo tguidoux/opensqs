@@ -1,0 +1,11 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_test")
+
+opensqs_go_test(
+    name = "go_default_test",
+    srcs = ["tls_test.go"],
+    deps = [
+        "//apps/go/server/tls:go_default_library",
+        "@com_github_stretchr_testify//assert:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
+    ],
+)

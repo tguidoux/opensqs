@@ -1,0 +1,31 @@
+# These owners will be automatically requested for review
+# when their code is changed in a pull request.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for the entire repository
+*                           @tguidoux
+
+# Go source code
+/apps/                      @tguidoux
+/pkgs/                      @tguidoux
+
+# Build system & tooling
+/tools/                     @tguidoux
+/BUILD.bazel                @tguidoux
+/deps.bzl                   @tguidoux
+/MODULE.bazel               @tguidoux
+/WORKSPACE                  @tguidoux
+/WORKSPACE.bzlmod           @tguidoux
+
+# CI/CD
+/.github/workflows/         @tguidoux
+
+# Deployment
+/deploy/                    @tguidoux
+
+# Documentation
+/docs/                      @tguidoux
+/README.md                  @tguidoux
+/CONTRIBUTING.md            @tguidoux
+/SECURITY.md                @tguidoux

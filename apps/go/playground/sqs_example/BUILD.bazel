@@ -1,0 +1,21 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_binary", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/tguidoux/opensqs/apps/go/playground/sqs_example",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pkgs/v1/logger:go_default_library",
+        "//pkgs/v1/queue:go_default_library",
+        "//pkgs/v1/queue/store:go_default_library",
+        "//pkgs/v1/queue/store/memory:go_default_library",
+        "//pkgs/v1/queue/types:go_default_library",
+    ],
+)
+
+opensqs_go_binary(
+    name = "sqs_example",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)

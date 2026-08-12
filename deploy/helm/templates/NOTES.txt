@@ -1,0 +1,31 @@
+OpenSQS has been deployed!
+
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  export SQS_HOST={{ .host }}
+  SQS API:  http://{{ .host }}:{{ $.Values.service.port }}
+  Web UI:   http://{{ .host }}:{{ $.Values.service.uiPort }}
+{{- end }}
+{{- else }}
+  {{- if eq .Values.service.type "LoadBalancer" }}
+  export SQS_HOST=$(kubectl get svc {{ include "opensqs.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+  {{- else }}
+  export SQS_HOST={{ include "opensqs.fullname" . }}.{{ .Release.Namespace }}.svc
+  {{- end }}
+  SQS API:  http://$SQS_HOST:{{ .Values.service.port }}
+  Web UI:   http://$SQS_HOST:{{ .Values.service.uiPort }}
+{{- end }}
+
+2. Configure your SQS client to use the endpoint:
+   export AWS_ENDPOINT_URL=http://$SQS_HOST:{{ .Values.service.port }}
+
+3. Check the deployment status:
+   kubectl get pods -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+4. View logs:
+   kubectl logs -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+5. Access metrics (if enabled):
+   kubectl port-forward svc/{{ include "opensqs.fullname" . }} {{ .Values.service.metricsPort }}:metrics
+   # Then visit: http://localhost:{{ .Values.service.metricsPort }}/metrics

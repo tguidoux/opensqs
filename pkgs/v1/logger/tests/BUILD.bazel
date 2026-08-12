@@ -5,7 +5,6 @@ opensqs_go_test(
     srcs = [
         "contextual_logger_test.go",
         "factory_test.go",
-        "sync_logger_test.go",
         "uncontextual_logger_test.go",
     ],
     deps = [

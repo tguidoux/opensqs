@@ -125,7 +125,7 @@ func TestLoggerWithExtra(t *testing.T) {
 	// Add extra fields
 	loggerWithExtra := log.WithExtra(map[string]any{"key": "value", "number": 42})
 	require.NotNil(t, loggerWithExtra)
-	assert.Equal(t, loggerWithExtra, log) // Should return same instance
+	assert.NotEqual(t, loggerWithExtra, log) // Should return a new instance
 
 	// Log should include extra
 	loggerWithExtra.Info(ctx, "test message")

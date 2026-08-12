@@ -1,0 +1,16 @@
+load("//tools/rules/golang:defs.bzl", "opensqs_go_library")
+
+opensqs_go_library(
+    name = "go_default_library",
+    srcs = [
+        "metrics.go",
+        "server.go",
+    ],
+    importpath = "github.com/tguidoux/opensqs/apps/go/server/metrics",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/go/server/serverbase:go_default_library",
+        "@com_github_prometheus_client_golang//prometheus:go_default_library",
+        "@com_github_prometheus_client_golang//prometheus/promhttp:go_default_library",
+    ],
+)
