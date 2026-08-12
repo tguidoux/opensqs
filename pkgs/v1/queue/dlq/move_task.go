@@ -3,12 +3,12 @@ package dlq
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/tguidoux/opensqs/pkgs/v1/id"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 )
 
@@ -55,6 +55,7 @@ type MoveTask struct {
 	maxNumberOfMessagesPerSecond int
 	movedMessages                atomic.Int64
 	startedAt                    time.Time
+	completedAt                  atomic.Value // stores time.Time
 	cancelled                    chan struct{}
 	cancelOnce                   sync.Once
 }
@@ -89,6 +90,15 @@ func (t *MoveTask) MovedMessages() int {
 // StartedAt returns the time the task was started.
 func (t *MoveTask) StartedAt() time.Time { return t.startedAt }
 
+// CompletedAt returns the time the task reached a terminal state (completed, cancelled, or failed).
+// Returns the zero time if the task is still running.
+func (t *MoveTask) CompletedAt() time.Time {
+	if v := t.completedAt.Load(); v != nil {
+		return v.(time.Time)
+	}
+	return time.Time{}
+}
+
 // taskTTL is how long a completed/cancelled/failed task is kept before cleanup.
 const taskTTL = 24 * time.Hour
 
@@ -104,6 +114,7 @@ type MoveTaskManager struct {
 	tasks       map[string]*MoveTask
 	lookupFn    QueueLookupFunc
 	listFn      QueueListFunc
+	log         logger.LoggerInterface
 	stopCleanup chan struct{}
 	closeOnce   sync.Once
 }
@@ -111,11 +122,12 @@ type MoveTaskManager struct {
 // NewMoveTaskManager creates a new MoveTaskManager wired to the given lookup and list functions.
 // The lookup function resolves a queue by ARN, the list function lists queues by prefix.
 // Both are typically wired from *queue.QueueManager.
-func NewMoveTaskManager(lookupFn QueueLookupFunc, listFn QueueListFunc) *MoveTaskManager {
+func NewMoveTaskManager(lookupFn QueueLookupFunc, listFn QueueListFunc, log logger.LoggerInterface) *MoveTaskManager {
 	mtm := &MoveTaskManager{
 		tasks:       make(map[string]*MoveTask),
 		lookupFn:    lookupFn,
 		listFn:      listFn,
+		log:         log,
 		stopCleanup: make(chan struct{}),
 	}
 	go mtm.cleanupLoop()
@@ -146,7 +158,13 @@ func (mtm *MoveTaskManager) removeStaleTasks() {
 		if status == MoveTaskStatusRunning || status == MoveTaskStatusCancelling {
 			continue
 		}
-		if now.Sub(t.startedAt) > taskTTL {
+		// Use completedAt (when the task reached a terminal state) for TTL calculation.
+		// Falls back to startedAt if completedAt was never set (defensive).
+		reference := t.CompletedAt()
+		if reference.IsZero() {
+			reference = t.startedAt
+		}
+		if now.Sub(reference) > taskTTL {
 			delete(mtm.tasks, handle)
 		}
 	}
@@ -167,6 +185,11 @@ func (mtm *MoveTaskManager) Close() {
 func (mtm *MoveTaskManager) StartTask(sourceArn, destinationArn string, maxRate int) (*MoveTask, error) {
 	if sourceArn == "" {
 		return nil, fmt.Errorf("source ARN is required")
+	}
+
+	// Prevent moving messages to the same queue (no-op / confusing)
+	if destinationArn != "" && sourceArn == destinationArn {
+		return nil, fmt.Errorf("source and destination ARNs must be different")
 	}
 
 	// Verify source queue exists
@@ -305,7 +328,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 		// Receive up to 10 messages with no long polling
 		messages, err := sourceQueue.Store().ReceiveMessages(ctx, 10, 30, 0)
 		if err != nil {
-			log.Printf("move task %s: failed to receive messages from source: %v", task.taskHandle, err)
+			mtm.log.Errorf("move task %s: failed to receive messages from source: %v", task.taskHandle, err)
 			mtm.setTaskStatus(task, MoveTaskStatusFailed)
 			return
 		}
@@ -335,7 +358,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 
 			if err := destQueue.Store().SendMessage(ctx, msg, 0); err != nil {
 				// Send failed — message remains in source queue (not deleted)
-				log.Printf("move task %s: failed to send message to destination: %v", task.taskHandle, err)
+				mtm.log.Errorf("move task %s: failed to send message to destination: %v", task.taskHandle, err)
 				continue
 			}
 
@@ -343,7 +366,7 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 			if err := sourceQueue.Store().DeleteMessage(ctx, msg.ReceiptHandle); err != nil {
 				// Delete failed — message may be delivered twice (at-least-once)
 				// This is acceptable per SQS semantics, but log for observability.
-				log.Printf("move task %s: failed to delete message from source (may duplicate): %v", task.taskHandle, err)
+				mtm.log.Errorf("move task %s: failed to delete message from source (may duplicate): %v", task.taskHandle, err)
 			}
 
 			task.movedMessages.Add(1)
@@ -352,8 +375,13 @@ func (mtm *MoveTaskManager) runTask(ctx context.Context, task *MoveTask, sourceQ
 }
 
 // setTaskStatus safely updates a task's status.
+// When transitioning to a terminal state (completed, cancelled, failed),
+// it also records the completion time for TTL-based cleanup.
 func (mtm *MoveTaskManager) setTaskStatus(task *MoveTask, status MoveTaskStatus) {
 	task.status.Store(status)
+	if status == MoveTaskStatusCompleted || status == MoveTaskStatusCancelled || status == MoveTaskStatusFailed {
+		task.completedAt.Store(time.Now().UTC())
+	}
 }
 
 // generateTaskHandle creates a unique task handle.
