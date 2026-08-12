@@ -27,7 +27,7 @@ jobs:
       
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Full history required for accurate diff
       
@@ -95,7 +95,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
