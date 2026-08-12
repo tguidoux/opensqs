@@ -29,6 +29,7 @@ type MemoryStore struct {
 	sequenceCounter           int64
 	maxReceiveCount           int
 	redriveFunc               store.RedriveFunc
+	messageRetentionPeriod    int
 }
 
 type memoryMessage struct {
@@ -55,7 +56,30 @@ func NewMemoryStore(queueName string, visibilityTimeout int, serverSecret []byte
 		inFlightGroups:            make(map[string]bool),
 		maxReceiveCount:           cfg.MaxReceiveCount,
 		redriveFunc:               cfg.RedriveFunc,
+		messageRetentionPeriod:    cfg.MessageRetentionPeriod,
 	}
+}
+
+// deleteExpiredMessagesLocked removes messages older than the retention period.
+// Must be called with s.mu held. Called lazily during ReceiveMessages.
+func (s *MemoryStore) deleteExpiredMessagesLocked(now time.Time) {
+	retention := s.messageRetentionPeriod
+	if retention <= 0 {
+		retention = types.DefaultMessageRetentionPeriod
+	}
+	cutoff := now.Add(-time.Duration(retention) * time.Second)
+
+	var kept []*memoryMessage
+	for _, mm := range s.messages {
+		if mm.msg.SentTimestamp.Before(cutoff) {
+			if mm.visibilityTimer != nil {
+				mm.visibilityTimer.Stop()
+			}
+			continue
+		}
+		kept = append(kept, mm)
+	}
+	s.messages = kept
 }
 
 // SendMessage adds a message to the queue with an optional delay.
@@ -142,6 +166,10 @@ func (s *MemoryStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 		}
 
 		now := store.Now()
+
+		// Lazily delete messages that have exceeded their retention period
+		s.deleteExpiredMessagesLocked(now)
+
 		var result []*types.Message
 
 		for _, mm := range s.messages {
@@ -212,12 +240,18 @@ func (s *MemoryStore) receiveMessage(mm *memoryMessage, visibilityTimeout int, n
 	}
 
 	// Set up a timer to make the message visible again (or redrive if DLQ threshold reached)
+	currentReceiptHandle := mm.receiptHandle
 	mm.visibilityTimer = time.AfterFunc(time.Duration(visibilityTimeout)*time.Second, func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
 		// Skip if store was closed after timer fired
 		if s.closed {
+			return
+		}
+
+		// Skip if the receipt handle has changed (message was received again or deleted)
+		if mm.receiptHandle != currentReceiptHandle {
 			return
 		}
 
@@ -292,17 +326,25 @@ func (s *MemoryStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 				s.notifyWaiters()
 			} else {
 				mm.visibleAt = store.Now().Add(time.Duration(visibilityTimeout) * time.Second)
+				currentReceiptHandle := mm.receiptHandle
 				mm.visibilityTimer = time.AfterFunc(time.Duration(visibilityTimeout)*time.Second, func() {
 					s.mu.Lock()
 					defer s.mu.Unlock()
+
+					// Skip if the receipt handle has changed (message was received again or deleted)
+					if mm.receiptHandle != currentReceiptHandle {
+						return
+					}
 
 					// Check if message should be redrived to a dead-letter queue
 					if s.maxReceiveCount > 0 && mm.receiveCount >= s.maxReceiveCount && s.redriveFunc != nil {
 						s.removeMessage(mm)
 						store.PrepareForRedrive(mm.msg)
+						s.redriveFunc(mm.msg)
+					} else {
+						mm.msg.IsVisible = true
 					}
 
-					mm.msg.IsVisible = true
 					mm.receiptHandle = ""
 					mm.visibilityTimer = nil
 					// Clear in-flight group for FIFO queues

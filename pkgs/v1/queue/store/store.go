@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
 
@@ -66,6 +67,8 @@ type StoreConfig struct {
 	ContentBasedDeduplication bool
 	MaxReceiveCount           int
 	RedriveFunc               RedriveFunc
+	Log                       logger.LoggerInterface
+	MessageRetentionPeriod    int // seconds; 0 means use default
 }
 
 // RedriveFunc is called by a store when a message exceeds maxReceiveCount.

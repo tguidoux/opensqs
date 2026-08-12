@@ -6,12 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 )
@@ -70,6 +71,12 @@ type BadgerStore struct {
 	// DLQ support
 	maxReceiveCount int
 	redriveFunc     store.RedriveFunc
+
+	// Logging
+	log logger.LoggerInterface
+
+	// Message retention (seconds); 0 means use default
+	messageRetentionPeriod int
 }
 
 // storedMessage is the serialized form of a message in BadgerDB.
@@ -114,9 +121,49 @@ func NewBadgerStore(db *BadgerDB, queueName string, visibilityTimeout int, serve
 		dedupCache:                make(map[string]time.Time),
 		maxReceiveCount:           cfg.MaxReceiveCount,
 		redriveFunc:               cfg.RedriveFunc,
+		log:                       cfg.Log,
+		messageRetentionPeriod:    cfg.MessageRetentionPeriod,
+	}
+
+	// For FIFO queues, load the last sequence number from the database
+	// to ensure sequence numbers continue monotonically across restarts.
+	if s.isFifo {
+		if err := s.loadSequenceCounter(); err != nil {
+			return nil, fmt.Errorf("failed to load sequence counter: %w", err)
+		}
 	}
 
 	return s, nil
+}
+
+// loadSequenceCounter scans the database for the highest sequence number
+// and sets sequenceCounter so that new messages continue monotonically
+// after a restart. Only called for FIFO queues.
+func (s *BadgerStore) loadSequenceCounter() error {
+	return s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = s.keyPrefix
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(s.keyPrefix); it.ValidForPrefix(s.keyPrefix); it.Next() {
+			item := it.Item()
+			var sm storedMessage
+			err := item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &sm)
+			})
+			if err != nil {
+				continue
+			}
+			if sm.SequenceNumber != "" {
+				if n, err := strconv.ParseInt(sm.SequenceNumber, 10, 64); err == nil && n > s.sequenceCounter {
+					s.sequenceCounter = n
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // msgKey returns the BadgerDB key for a message ID.
@@ -194,6 +241,44 @@ func (s *BadgerStore) SendMessage(ctx context.Context, msg *types.Message, delay
 	return nil
 }
 
+// deleteExpiredMessages removes messages older than the retention period.
+// Called lazily during ReceiveMessages to avoid a background goroutine.
+func (s *BadgerStore) deleteExpiredMessages(ctx context.Context) {
+	retention := s.messageRetentionPeriod
+	if retention <= 0 {
+		retention = types.DefaultMessageRetentionPeriod
+	}
+	cutoff := store.Now().Add(-time.Duration(retention) * time.Second).UnixMilli()
+
+	_ = s.db.Update(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = s.keyPrefix
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		var keysToDelete [][]byte
+		for it.Seek(s.keyPrefix); it.ValidForPrefix(s.keyPrefix); it.Next() {
+			item := it.Item()
+			var sm storedMessage
+			err := item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &sm)
+			})
+			if err != nil {
+				continue
+			}
+			if sm.SentTimestamp < cutoff {
+				keysToDelete = append(keysToDelete, append([]byte{}, item.Key()...))
+			}
+		}
+
+		for _, key := range keysToDelete {
+			_ = txn.Delete(key)
+		}
+		return nil
+	})
+}
+
 // ReceiveMessages retrieves up to maxMessages visible messages.
 // Long polling is implemented via a polling loop with short sleeps.
 func (s *BadgerStore) ReceiveMessages(ctx context.Context, maxMessages int, visibilityTimeout int, waitTimeSeconds int) ([]*types.Message, error) {
@@ -215,6 +300,9 @@ func (s *BadgerStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 
 		// Check for messages that need to be redrived to a DLQ
 		s.redriveIfNeededLocked(ctx)
+
+		// Lazily delete messages that have exceeded their retention period
+		s.deleteExpiredMessages(ctx)
 
 		now := store.Now()
 		nowMilli := now.UnixMilli()
@@ -708,7 +796,7 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 				return json.Unmarshal(val, &sm)
 			})
 			if err != nil {
-				log.Printf("badger: failed to unmarshal message during redrive scan: %v", err)
+				s.log.Errorf("badger: failed to unmarshal message during redrive scan: %v", err)
 				continue
 			}
 
@@ -725,7 +813,7 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 		return nil
 	})
 	if err != nil {
-		log.Printf("badger: failed to scan for redrive candidates: %v", err)
+		s.log.Errorf("badger: failed to scan for redrive candidates: %v", err)
 		return
 	}
 
@@ -745,7 +833,7 @@ func (s *BadgerStore) redriveIfNeededLocked(ctx context.Context) {
 		return nil
 	})
 	if err != nil {
-		log.Printf("badger: failed to delete redrived messages (non-fatal, will retry): %v", err)
+		s.log.Errorf("badger: failed to delete redrived messages (non-fatal, will retry): %v", err)
 		return
 	}
 

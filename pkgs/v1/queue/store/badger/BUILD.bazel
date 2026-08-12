@@ -6,6 +6,7 @@ opensqs_go_library(
     importpath = "github.com/tguidoux/opensqs/pkgs/v1/queue/store/badger",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkgs/v1/logger:go_default_library",
         "//pkgs/v1/queue/store:go_default_library",
         "//pkgs/v1/queue/types:go_default_library",
         "@com_github_dgraph_io_badger_v4//:go_default_library",

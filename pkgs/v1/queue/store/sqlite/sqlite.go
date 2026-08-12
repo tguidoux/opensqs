@@ -9,12 +9,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/types"
 	_ "modernc.org/sqlite"
@@ -45,6 +46,12 @@ type SQLiteStore struct {
 	// DLQ support
 	maxReceiveCount int
 	redriveFunc     store.RedriveFunc
+
+	// Logging
+	log logger.LoggerInterface
+
+	// Message retention (seconds); 0 means use default
+	messageRetentionPeriod int
 }
 
 // NewSQLiteStore creates a new SQLite-backed message store.
@@ -67,10 +74,20 @@ func NewSQLiteStore(db *sql.DB, queueName string, visibilityTimeout int, serverS
 		dedupCache:                make(map[string]time.Time),
 		maxReceiveCount:           cfg.MaxReceiveCount,
 		redriveFunc:               cfg.RedriveFunc,
+		log:                       cfg.Log,
+		messageRetentionPeriod:    cfg.MessageRetentionPeriod,
 	}
 
 	if err := s.initSchema(); err != nil {
 		return nil, fmt.Errorf("failed to initialize SQLite schema: %w", err)
+	}
+
+	// For FIFO queues, load the last sequence number from the database
+	// to ensure sequence numbers continue monotonically across restarts.
+	if s.isFifo {
+		if err := s.loadSequenceCounter(); err != nil {
+			return nil, fmt.Errorf("failed to load sequence counter: %w", err)
+		}
 	}
 
 	return s, nil
@@ -102,6 +119,26 @@ func (s *SQLiteStore) initSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_%s_group_id ON %s (message_group_id);
 	`, tableName, tableName, tableName, tableName, tableName, tableName, tableName))
 	return err
+}
+
+// loadSequenceCounter queries the database for the highest sequence number
+// and sets sequenceCounter so that new messages continue monotonically
+// after a restart. Only called for FIFO queues.
+func (s *SQLiteStore) loadSequenceCounter() error {
+	tableName := s.tableName()
+	var maxSeq sql.NullString
+	err := s.db.QueryRow(fmt.Sprintf(
+		`SELECT MAX(CAST(sequence_number AS INTEGER)) FROM %s WHERE sequence_number != ''`, tableName,
+	)).Scan(&maxSeq)
+	if err != nil {
+		return fmt.Errorf("failed to query max sequence number: %w", err)
+	}
+	if maxSeq.Valid && maxSeq.String != "" {
+		if n, err := strconv.ParseInt(maxSeq.String, 10, 64); err == nil && n > s.sequenceCounter {
+			s.sequenceCounter = n
+		}
+	}
+	return nil
 }
 
 // tableName returns the sanitized table name for this queue.
@@ -190,6 +227,20 @@ func (s *SQLiteStore) SendMessage(ctx context.Context, msg *types.Message, delay
 	return err
 }
 
+// deleteExpiredMessages removes messages older than the retention period.
+// Called lazily during ReceiveMessages to avoid a background goroutine.
+func (s *SQLiteStore) deleteExpiredMessages(ctx context.Context) {
+	retention := s.messageRetentionPeriod
+	if retention <= 0 {
+		retention = types.DefaultMessageRetentionPeriod
+	}
+	cutoff := store.Now().Add(-time.Duration(retention) * time.Second).UnixMilli()
+	tableName := s.tableName()
+	_, _ = s.db.ExecContext(ctx, fmt.Sprintf(
+		`DELETE FROM %s WHERE sent_timestamp < ?`, tableName,
+	), cutoff)
+}
+
 // ReceiveMessages retrieves up to maxMessages visible messages.
 // Long polling is implemented via a polling loop with short sleeps.
 func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visibilityTimeout int, waitTimeSeconds int) ([]*types.Message, error) {
@@ -211,6 +262,9 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 
 		// Check for messages that need to be redrived to a DLQ
 		s.redriveIfNeededLocked(ctx)
+
+		// Lazily delete messages that have exceeded their retention period
+		s.deleteExpiredMessages(ctx)
 
 		now := store.Now()
 		tableName := s.tableName()
@@ -303,7 +357,7 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 			if msgAttrsJSON != "" && msgAttrsJSON != "{}" {
 				var attrs map[string]types.MessageAttribute
 				if err := json.Unmarshal([]byte(msgAttrsJSON), &attrs); err != nil {
-					log.Printf("sqlite: failed to unmarshal message attributes for message %s: %v", id, err)
+					s.log.Errorf("sqlite: failed to unmarshal message attributes for message %s: %v", id, err)
 				} else {
 					msg.MessageAttributes = attrs
 				}
@@ -313,7 +367,7 @@ func (s *SQLiteStore) ReceiveMessages(ctx context.Context, maxMessages int, visi
 			if sysAttrsJSON != "" && sysAttrsJSON != "{}" {
 				var sysAttrs map[string]types.MessageSystemAttribute
 				if err := json.Unmarshal([]byte(sysAttrsJSON), &sysAttrs); err != nil {
-					log.Printf("sqlite: failed to unmarshal system attributes for message %s: %v", id, err)
+					s.log.Errorf("sqlite: failed to unmarshal system attributes for message %s: %v", id, err)
 				} else {
 					msg.SystemAttributes = sysAttrs
 				}
@@ -430,7 +484,7 @@ func (s *SQLiteStore) DeleteMessage(ctx context.Context, receiptHandle string) e
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		log.Printf("sqlite: failed to get rows affected for delete: %v", err)
+		s.log.Errorf("sqlite: failed to get rows affected for delete: %v", err)
 		return nil
 	}
 	if rows == 0 {
@@ -463,7 +517,7 @@ func (s *SQLiteStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {
-			log.Printf("sqlite: failed to get rows affected for visibility change: %v", err)
+			s.log.Errorf("sqlite: failed to get rows affected for visibility change: %v", err)
 			return nil
 		}
 		if rows == 0 {
@@ -483,7 +537,7 @@ func (s *SQLiteStore) ChangeMessageVisibility(ctx context.Context, receiptHandle
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		log.Printf("sqlite: failed to get rows affected for visibility change: %v", err)
+		s.log.Errorf("sqlite: failed to get rows affected for visibility change: %v", err)
 		return nil
 	}
 	if rows == 0 {
@@ -609,7 +663,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 
 	rows, err := s.db.QueryContext(ctx, query, now.UnixMilli(), s.maxReceiveCount)
 	if err != nil {
-		log.Printf("sqlite: failed to query messages for redrive: %v", err)
+		s.log.Errorf("sqlite: failed to query messages for redrive: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -626,7 +680,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 
 		if err := rows.Scan(&id, &body, &md5OfBody, &md5OfMsgAttrs, &msgAttrsJSON, &sysAttrsJSON,
 			&sentTs, &receiveCount, &firstReceived, &sequenceNumber, &dedupID, &groupID); err != nil {
-			log.Printf("sqlite: failed to scan redrive row: %v", err)
+			s.log.Errorf("sqlite: failed to scan redrive row: %v", err)
 			continue
 		}
 
@@ -644,7 +698,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 		if msgAttrsJSON != "" && msgAttrsJSON != "{}" {
 			var attrs map[string]types.MessageAttribute
 			if err := json.Unmarshal([]byte(msgAttrsJSON), &attrs); err != nil {
-				log.Printf("sqlite: failed to unmarshal message attributes during redrive for message %s: %v", id, err)
+				s.log.Errorf("sqlite: failed to unmarshal message attributes during redrive for message %s: %v", id, err)
 			} else {
 				msg.MessageAttributes = attrs
 			}
@@ -653,7 +707,7 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 		if sysAttrsJSON != "" && sysAttrsJSON != "{}" {
 			var sysAttrs map[string]types.MessageSystemAttribute
 			if err := json.Unmarshal([]byte(sysAttrsJSON), &sysAttrs); err != nil {
-				log.Printf("sqlite: failed to unmarshal system attributes during redrive for message %s: %v", id, err)
+				s.log.Errorf("sqlite: failed to unmarshal system attributes during redrive for message %s: %v", id, err)
 			} else {
 				msg.SystemAttributes = sysAttrs
 			}
@@ -666,14 +720,14 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 	// Redrive messages and delete from this queue atomically
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		log.Printf("sqlite: failed to begin redrive transaction: %v", err)
+		s.log.Errorf("sqlite: failed to begin redrive transaction: %v", err)
 		return
 	}
 	defer tx.Rollback() //nolint:errcheck
 
 	deleteStmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, tableName))
 	if err != nil {
-		log.Printf("sqlite: failed to prepare redrive delete statement: %v", err)
+		s.log.Errorf("sqlite: failed to prepare redrive delete statement: %v", err)
 		return
 	}
 	defer deleteStmt.Close()
@@ -682,14 +736,14 @@ func (s *SQLiteStore) redriveIfNeededLocked(ctx context.Context) {
 	// to avoid deadlock if redriveFunc accesses the same DB connection.
 	for i, msg := range toRedrive {
 		if _, err := deleteStmt.ExecContext(ctx, idsToDelete[i]); err != nil {
-			log.Printf("sqlite: failed to delete redrived message %s: %v", idsToDelete[i], err)
+			s.log.Errorf("sqlite: failed to delete redrived message %s: %v", idsToDelete[i], err)
 			return
 		}
 		store.PrepareForRedrive(msg)
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("sqlite: failed to commit redrive transaction: %v", err)
+		s.log.Errorf("sqlite: failed to commit redrive transaction: %v", err)
 		return
 	}
 
