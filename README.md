@@ -1,8 +1,11 @@
 # OpenSQS
 
+[![CI](https://github.com/tguidoux/opensqs/actions/workflows/ci.yml/badge.svg)](https://github.com/tguidoux/opensqs/actions/workflows/ci.yml)
+[![Code Quality](https://github.com/tguidoux/opensqs/actions/workflows/code-quality.yml/badge.svg)](https://github.com/tguidoux/opensqs/actions/workflows/code-quality.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.25.5-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/tguidoux/opensqs/pulls)
+[![GitHub Release](https://img.shields.io/github/v/release/tguidoux/opensqs)](https://github.com/tguidoux/opensqs/releases)
 
 **An open-source, self-hosted alternative to AWS SQS.** Built in Go, compatible with the AWS SQS API, and designed to be lightweight, fast, and easy to run anywhere.
 
@@ -263,7 +266,16 @@ OpenSQS uses **Bazel** with custom `opensqs_go_*` rules for hermetic, reproducib
 
 ## Contributing
 
-Contributions are welcome! Here's how to get started:
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
+
+- 📋 [Contributing Guide](CONTRIBUTING.md) — Development setup, conventions, and PR process
+- 🤝 [Code of Conduct](CODE_OF_CONDUCT.md) — Community standards
+- 🔒 [Security Policy](SECURITY.md) — How to report vulnerabilities
+- 📝 [Changelog](CHANGELOG.md) — Release history
+- 💬 [Discussions](https://github.com/tguidoux/opensqs/discussions) — Questions and ideas
+- 🐛 [Issues](https://github.com/tguidoux/opensqs/issues) — Bug reports and feature requests
+
+### Quick Start for Contributors
 
 1. **Fork** the repository
 2. **Clone** your fork: `git clone https://github.com/<your-username>/opensqs.git`
@@ -273,14 +285,7 @@ Contributions are welcome! Here's how to get started:
 6. **Commit** with a clear message
 7. **Push** and open a Pull Request
 
-### Guidelines
-
-- Follow the existing Bazel build patterns (`opensqs_go_*` rules)
-- Add tests in `tests/` subfolders within each package
-- Run `bazel run //:gazelle` after adding new Go files or dependencies
-- Run `bazel run //:clean` before committing to ensure a clean workspace
-- Keep functions small and focused on a single responsibility
-- Write self-documenting code with clear names
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
