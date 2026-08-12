@@ -21,7 +21,7 @@ func newTestManager() *queue.QueueManager {
 	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
 		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
-	return queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)
+	return queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory, logger.New("test", logger.UncontextualLoggerType))
 }
 
 func newTestCredStore() credentials.CredentialStore {

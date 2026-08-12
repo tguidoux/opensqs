@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/dlq"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/memory"
@@ -71,7 +72,7 @@ func newTestManager(queues ...*mockQueueRef) (*dlq.MoveTaskManager, map[string]*
 		return result
 	}
 
-	return dlq.NewMoveTaskManager(lookupFn, listFn), queueMap
+	return dlq.NewMoveTaskManager(lookupFn, listFn, logger.New("test", logger.UncontextualLoggerType)), queueMap
 }
 
 // sendMessageToQueue sends a message to a mock queue's store.

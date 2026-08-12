@@ -83,15 +83,10 @@ func (l *Logger) Log(ctx context.Context, level slog.Level, msg string, extra ..
 		}
 	}
 
-	convertedAttrs := make([]any, len(attrs))
-	for i, attr := range attrs {
-		convertedAttrs[i] = attr
-	}
-
 	// Strip newlines from the message
 	msg = cleanString(msg)
 
-	l.logger.Log(ctx, level, msg, convertedAttrs...)
+	l.logger.LogAttrs(ctx, level, msg, attrs...)
 }
 
 // Debug logs a debug-level message.

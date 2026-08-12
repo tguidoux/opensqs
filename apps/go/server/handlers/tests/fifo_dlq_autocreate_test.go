@@ -19,7 +19,7 @@ func newAutoCreateTestHandler() *handlers.Handler {
 	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
 		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
-	manager := queue.NewQueueManager("localhost:9324", "123456789012", "us-east-1", []byte("test-secret"), factory)
+	manager := queue.NewQueueManager("localhost:9324", "123456789012", "us-east-1", []byte("test-secret"), factory, logger.New("test", logger.UncontextualLoggerType))
 	limits := queue.NewLimits(queue.StrictMode)
 	return handlers.NewHandler(manager, limits, true, nil, logger.New("test", logger.UncontextualLoggerType))
 }

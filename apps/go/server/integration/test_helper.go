@@ -38,9 +38,9 @@ func newTestServer(t *testing.T) *testServer {
 	factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cfg store.StoreConfig) (store.Store, error) {
 		return memory.NewMemoryStore(queueName, visibilityTimeout, serverSecret, cfg), nil
 	}
-	manager := queue.NewQueueManager("localhost:0", "123456789012", "us-east-1", []byte("test-secret"), factory)
-	limits := queue.NewLimits(queue.StrictMode)
 	log := logger.New("integration-test", logger.UncontextualLoggerType)
+	manager := queue.NewQueueManager("localhost:0", "123456789012", "us-east-1", []byte("test-secret"), factory, log)
+	limits := queue.NewLimits(queue.StrictMode)
 	handler := handlers.NewHandler(manager, limits, true, nil, log) // autoCreate=true
 
 	mux := http.NewServeMux()

@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tguidoux/opensqs/pkgs/v1/logger"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store"
 	"github.com/tguidoux/opensqs/pkgs/v1/queue/store/sqlite"
@@ -107,7 +108,7 @@ func TestShutdown_WithSQLiteStore(t *testing.T) {
 		return newSQLiteStore(queueName, visibilityTimeout, serverSecret, cfg)
 	}
 
-	qm := queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory)
+	qm := queue.NewQueueManager("localhost:9324", "000000000000", "us-east-1", []byte("test-secret"), factory, logger.New("test", logger.UncontextualLoggerType))
 
 	_, err := qm.CreateQueue("sqlite-q", nil)
 	require.NoError(t, err)
