@@ -1,0 +1,108 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ==============================================================================
+  # Lint Go code via Bazel nogo (configured in nogo_config.json)
+  # nogo runs as part of bazel build/test, so we build all Go targets to enforce it.
+  # ==============================================================================
+  lint:
+    name: Lint (nogo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+
+      - name: Run nogo via Bazel build
+        run: |
+          set -euo pipefail
+          echo "🔍 Running nogo static analysis via Bazel build..."
+          echo "   (nogo is configured via nogo_config.json and enforced at build time)"
+          echo ""
+
+          # Building all Go targets triggers nogo analyzers.
+          # nogo runs automatically as part of go_library/go_test/go_binary compilation.
+          bazel build //apps/go/... //pkgs/v1/... //tools/...
+
+          echo ""
+          echo "✅ nogo static analysis passed"
+
+  # ==============================================================================
+  # Verify Bazel file formatting and BUILD generation
+  # ==============================================================================
+  bazel-check:
+    name: Bazel Format & Gazelle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: true
+          repository-cache: true
+
+      - name: Check Bazel file formatting
+        run: |
+          # Run buildifier in check mode
+          bazel run //:buildifier -- -mode=check || \
+            (echo "::error::Bazel files are not formatted. Run 'bazel run //:bazel.clean' and commit the changes." && exit 1)
+
+      - name: Check Gazelle is up to date
+        run: |
+          # Run gazelle in diff mode
+          bazel run //:gazelle -- update -mode=diff || \
+            (echo "::error::BUILD.bazel files are out of date. Run 'bazel run //:gazelle' and commit the changes." && exit 1)
+
+  # ==============================================================================
+  # Check for common issues (secrets, large files, etc.)
+  # ==============================================================================
+  pre-commit:
+    name: Pre-commit Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for large files
+        run: |
+          MAX_SIZE=1048576  # 1MB
+          LARGE_FILES=$(find . -not -path './.git/*' -not -path './bazel-*' -type f -size +${MAX_SIZE}c 2>/dev/null)
+          if [ -n "$LARGE_FILES" ]; then
+            echo "::error::Large files detected (>1MB):"
+            echo "$LARGE_FILES"
+            exit 1
+          fi
+          echo "✅ No large files found"
