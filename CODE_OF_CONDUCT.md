@@ -59,8 +59,10 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-**conduct@opensqs.io**.
+reported to the community leaders responsible for enforcement by opening a
+private security advisory at
+[github.com/tguidoux/opensqs/security/advisories/new](https://github.com/tguidoux/opensqs/security/advisories/new)
+or by contacting the repository owner directly via GitHub.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

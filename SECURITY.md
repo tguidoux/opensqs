@@ -26,7 +26,8 @@ Instead, please report vulnerabilities via one of these channels:
    - Click "Report a vulnerability"
    - Fill in the details
 
-2. **Email**: Send details to **security@opensqs.io**
+2. **Email**: Send details to the repository owner via GitHub
+   (open a private security advisory first, then share further details as needed)
 
 ### What to Include
 

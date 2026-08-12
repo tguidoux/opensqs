@@ -30,4 +30,6 @@ Include as much of the following as possible:
 
 ## Commercial Support
 
-For commercial support, managed hosting, or consulting, contact **support@opensqs.io**.
+For commercial support, managed hosting, or consulting, please open a discussion
+on [GitHub Discussions](https://github.com/tguidoux/opensqs/discussions) or contact
+the repository owner via GitHub.
