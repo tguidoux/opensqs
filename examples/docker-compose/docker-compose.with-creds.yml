@@ -1,0 +1,39 @@
+# Docker Compose — OpenSQS with initial credentials
+#
+# Purpose:
+#   Run OpenSQS with authentication enabled and pre-seeded credentials.
+#   Your AWS CLI or SDK can use the known key pair from the first request
+#   without creating credentials via the Web UI.
+#
+# Usage:
+#   docker compose -f examples/docker-compose/docker-compose.with-creds.yml up
+#
+# Endpoints:
+#   SQS API:  http://localhost:9324
+#   Web UI:   http://localhost:9325
+#   Metrics:  http://localhost:9326/metrics
+#
+# Credentials:
+#   AccessKeyId:     AKIAIOSFODNN7EXAMPLE
+#   SecretAccessKey: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+#
+# AWS CLI:
+#   export AWS_ENDPOINT_URL=http://localhost:9324
+#   export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+#   export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+#   export AWS_DEFAULT_REGION=us-east-1
+#   aws sqs create-queue --queue-name my-queue
+#
+# See: examples/docker-compose/README.md
+
+services:
+  opensqs:
+    image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
+    ports:
+      - "9324:9324"  # SQS API
+      - "9325:9325"  # Web UI
+      - "9326:9326"  # Metrics
+    volumes:
+      - ./config.with-creds.yaml:/etc/opensqs/config.yaml:ro
+    command: ["--config", "/etc/opensqs/config.yaml"]
+    restart: unless-stopped

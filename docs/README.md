@@ -14,6 +14,7 @@ OpenSQS is an open-source, self-hosted AWS SQS-compatible message queue server w
 | [Shared Packages](shared-packages.md) | Cross-cutting packages: config, environment, logger |
 | [Benchmarks](benchmarks.md) | Performance benchmarks for MemoryStore, SQLiteStore, and handler pipeline |
 | [RFC-001](rfc-001-opensqs-server.md) | Original design specification and RFC |
+| [Examples](../examples/README.md) | Deployment examples: Docker, Docker Compose, Kubernetes, and CLI commands |
 
 ## Quick Start
 
@@ -71,6 +72,31 @@ factory := func(queueName string, visibilityTimeout int, serverSecret []byte, cf
 manager := queue.NewQueueManager("localhost:9324", "123456789012", "us-east-1", []byte("my-secret"), factory)
 q, _ := manager.CreateQueue("my-queue", nil)
 ```
+
+### Deployment Examples
+
+The [`examples/`](../examples/) directory contains ready-to-use configurations for various deployment scenarios:
+
+```bash
+# Docker Compose — no auth (simplest)
+docker compose -f examples/docker-compose/docker-compose.no-auth.yml up
+
+# Docker Compose — with pre-seeded credentials
+docker compose -f examples/docker-compose/docker-compose.with-creds.yml up
+
+# Docker Compose — SQLite persistence
+docker compose -f examples/docker-compose/docker-compose.sqlite.yml up
+
+# Kubernetes — with credentials
+kubectl apply -f examples/kubernetes/k8s.secret.yaml
+kubectl apply -f examples/kubernetes/k8s.with-creds.yaml
+
+# AWS CLI command examples
+./examples/commands/quick-start.sh      # Basic queue operations
+./examples/commands/fifo-and-dlq.sh     # FIFO + dead-letter queues
+```
+
+See [`examples/README.md`](../examples/README.md) for the full overview.
 
 ## Features
 
@@ -147,6 +173,11 @@ opensqs/
 │   └── logger/             # Structured logging
 ├── deploy/
 │   └── helm/                # Helm chart (deployment, service, configmap, PVC, ingress, HPA, PDB)
+├── examples/               # Deployment examples (Docker, Docker Compose, Kubernetes, CLI commands)
+│   ├── docker/             # Dockerfile examples (with/without auth)
+│   ├── docker-compose/     # Docker Compose examples (memory, SQLite)
+│   ├── kubernetes/         # Kubernetes manifests (with/without auth, persistent)
+│   └── commands/           # AWS CLI command scripts (quick-start, FIFO+DLQ, Bazel)
 ├── tools/                   # Bazel rules and tools
 └── docs/                    # This documentation
 ```

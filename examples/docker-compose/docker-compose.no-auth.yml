@@ -1,0 +1,34 @@
+# Docker Compose — OpenSQS with no authentication
+#
+# Purpose:
+#   Quick-start OpenSQS with auth disabled. Perfect for local development,
+#   prototyping, and CI where you just need a working SQS endpoint.
+#
+# Usage:
+#   docker compose -f examples/docker-compose/docker-compose.no-auth.yml up
+#
+# Endpoints:
+#   SQS API:  http://localhost:9324
+#   Web UI:   http://localhost:9325
+#   Metrics:  http://localhost:9326/metrics
+#
+# AWS CLI (no credentials needed):
+#   export AWS_ENDPOINT_URL=http://localhost:9324
+#   export AWS_ACCESS_KEY_ID=test
+#   export AWS_SECRET_ACCESS_KEY=test
+#   export AWS_DEFAULT_REGION=us-east-1
+#   aws sqs create-queue --queue-name my-queue
+#
+# See: examples/docker-compose/README.md
+
+services:
+  opensqs:
+    image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
+    ports:
+      - "9324:9324"  # SQS API
+      - "9325:9325"  # Web UI
+      - "9326:9326"  # Metrics
+    volumes:
+      - ./config.no-auth.yaml:/etc/opensqs/config.yaml:ro
+    command: ["--config", "/etc/opensqs/config.yaml"]
+    restart: unless-stopped

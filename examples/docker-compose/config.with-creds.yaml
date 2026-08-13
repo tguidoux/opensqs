@@ -1,0 +1,40 @@
+# OpenSQS config for Docker Compose — with initial credentials
+# Mounted into the container at /etc/opensqs/config.yaml
+#
+# IMPORTANT: Replace the example credentials with your own.
+# Never commit real credentials to source control.
+
+server:
+  host: "0.0.0.0"
+  port: 9324
+
+sqs:
+  nodeAddress: "localhost:9324"
+  accountId: "123456789012"
+  region: "us-east-1"
+  storageType: "memory"
+  strictLimits: true
+  serverSecret: "dev-only-not-for-production"
+
+log:
+  level: "info"
+
+ui:
+  enabled: true
+  port: 9325
+
+metrics:
+  enabled: true
+  port: 9326
+
+environment: "local"
+
+auth:
+  enabled: true
+  initialCredentials:
+    - label: "dev-access-key"
+      accessKeyId: "AKIAIOSFODNN7EXAMPLE"
+      secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+queues:
+  autoCreate: true

@@ -1,0 +1,42 @@
+# OpenSQS configuration — no authentication
+#
+# This config disables credential-based auth entirely. All SQS API
+# requests are accepted without AccessKeyId / SecretAccessKey.
+#
+# Use this for:
+#   - Local development where you don't want to manage credentials
+#   - CI/CD pipelines that need a quick throwaway queue
+#   - Testing and prototyping
+
+server:
+  host: "0.0.0.0"
+  port: 9324
+
+sqs:
+  nodeAddress: "localhost:9324"
+  accountId: "123456789012"
+  region: "us-east-1"
+  storageType: "memory"
+  strictLimits: true
+  serverSecret: "dev-only-not-for-production"
+
+log:
+  level: "info"
+
+ui:
+  enabled: true
+  port: 9325
+
+metrics:
+  enabled: true
+  port: 9326
+
+environment: "local"
+
+# Authentication disabled — no credentials required
+auth:
+  enabled: false
+
+# Auto-create queues on first access
+queues:
+  autoCreate: true

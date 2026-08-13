@@ -1,0 +1,197 @@
+# Kubernetes — OpenSQS with initial credentials
+#
+# Purpose:
+#   Deploy OpenSQS to a Kubernetes cluster with authentication enabled and
+#   pre-seeded credentials. The access key / secret key are stored in a
+#   Kubernetes Secret and injected as environment variables. Pods in the
+#   cluster can authenticate using these known credentials from the start.
+#
+# Usage:
+#   # 1. Create the namespace and secret first
+#   kubectl apply -f examples/kubernetes/k8s.secret.yaml
+#
+#   # 2. Deploy OpenSQS
+#   kubectl apply -f examples/kubernetes/k8s.with-creds.yaml
+#
+# Access:
+#   kubectl port-forward svc/opensqs 9324:9324 -n opensqs
+#   # Then: export AWS_ENDPOINT_URL=http://localhost:9324
+#   #       export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+#   #       export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+#   #       export AWS_DEFAULT_REGION=us-east-1
+#
+# See: examples/kubernetes/README.md
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensqs-config
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 9324
+    sqs:
+      nodeAddress: "opensqs.opensqs.svc.cluster.local:9324"
+      accountId: "123456789012"
+      region: "us-east-1"
+      storageType: "memory"
+      strictLimits: true
+      # serverSecret is injected via SQS__SERVERSECRET env var from the Secret
+    log:
+      level: "info"
+    health:
+      port: 8001
+    ui:
+      enabled: true
+      port: 9325
+    metrics:
+      enabled: true
+      port: 9326
+    environment: "staging"
+    auth:
+      enabled: true
+      # Initial credentials are injected via environment variables:
+      #   SQS__AUTH__INITIALCREDENTIALS__0__LABEL
+      #   SQS__AUTH__INITIALCREDENTIALS__0__ACCESSKEYID
+      #   SQS__AUTH__INITIALCREDENTIALS__0__SECRETACCESSKEY
+    queues:
+      autoCreate: true
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensqs
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensqs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opensqs
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opensqs
+          image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/opensqs/config.yaml"]
+          ports:
+            - name: sqs
+              containerPort: 9324
+              protocol: TCP
+            - name: ui
+              containerPort: 9325
+              protocol: TCP
+            - name: metrics
+              containerPort: 9326
+              protocol: TCP
+            - name: health
+              containerPort: 8001
+              protocol: TCP
+          env:
+            # Server secret for signing receipt handles
+            - name: SQS__SERVERSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: serverSecret
+            # Initial credentials — injected from the Kubernetes Secret
+            - name: SQS__AUTH__INITIALCREDENTIALS__0__LABEL
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: credLabel
+            - name: SQS__AUTH__INITIALCREDENTIALS__0__ACCESSKEYID
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: accessKeyId
+            - name: SQS__AUTH__INITIALCREDENTIALS__0__SECRETACCESSKEY
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: secretAccessKey
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/opensqs
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: opensqs-config
+        - name: tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensqs
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  type: ClusterIP
+  ports:
+    - name: sqs
+      port: 9324
+      targetPort: sqs
+      protocol: TCP
+    - name: ui
+      port: 9325
+      targetPort: ui
+      protocol: TCP
+    - name: metrics
+      port: 9326
+      targetPort: metrics
+      protocol: TCP
+    - name: health
+      port: 8001
+      targetPort: health
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: opensqs

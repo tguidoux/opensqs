@@ -1,0 +1,40 @@
+# OpenSQS config for Docker Compose — SQLite persistence with credentials
+#
+# Uses SQLite for durable message storage. Data is persisted to the
+# /data volume mounted in docker-compose.sqlite.yml.
+
+server:
+  host: "0.0.0.0"
+  port: 9324
+
+sqs:
+  nodeAddress: "localhost:9324"
+  accountId: "123456789012"
+  region: "us-east-1"
+  storageType: "sqlite"
+  sqlitePath: "/data/opensqs.db"
+  strictLimits: true
+  serverSecret: "dev-only-not-for-production"
+
+log:
+  level: "info"
+
+ui:
+  enabled: true
+  port: 9325
+
+metrics:
+  enabled: true
+  port: 9326
+
+environment: "local"
+
+auth:
+  enabled: true
+  initialCredentials:
+    - label: "dev-access-key"
+      accessKeyId: "AKIAIOSFODNN7EXAMPLE"
+      secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+queues:
+  autoCreate: true

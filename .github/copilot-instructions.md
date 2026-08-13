@@ -21,6 +21,8 @@ Always use Bazel commands and BUILD.bazel files for any build-related suggestion
 - `apps/` - Applications organized by language (go/)
 - `pkgs/v1/` - Shared packages and libraries
 - `tools/` - Custom Bazel rules and development tools
+- `deploy/helm/` - Helm chart for Kubernetes deployment
+- `examples/` - Deployment examples (Docker, Docker Compose, Kubernetes, CLI commands)
 
 ## Go Conventions
 Use custom `opensqs_go_library`, `opensqs_go_binary`, `opensqs_go_test`, and `opensqs_go_image` rules instead of standard go_* rules.

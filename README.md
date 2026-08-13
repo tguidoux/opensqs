@@ -101,6 +101,43 @@ helm install opensqs deploy/helm -f my-values.yaml
 
 See [`deploy/helm/values.yaml`](deploy/helm/values.yaml) for all configurable options.
 
+## Examples
+
+The [`examples/`](examples/) directory contains ready-to-use configurations for various deployment scenarios:
+
+| Example | Auth | Storage | Environment |
+|---------|------|---------|-------------|
+| [Docker — No Auth](examples/docker/) | Disabled | Memory | Local dev |
+| [Docker — With Creds](examples/docker/) | Pre-seeded | Memory | Local dev |
+| [Docker Compose — No Auth](examples/docker-compose/) | Disabled | Memory | Local dev |
+| [Docker Compose — With Creds](examples/docker-compose/) | Pre-seeded | Memory | Local dev |
+| [Docker Compose — SQLite](examples/docker-compose/) | Pre-seeded | SQLite (persistent) | Local dev |
+| [K8s — No Auth](examples/kubernetes/) | Disabled | Memory | Staging |
+| [K8s — With Creds](examples/kubernetes/) | Pre-seeded | Memory | Staging |
+| [K8s — Persistent](examples/kubernetes/) | Pre-seeded | SQLite + PVC | Prod |
+
+Each example includes its own README with setup instructions. See [`examples/README.md`](examples/README.md) for the full overview.
+
+Quick start with Docker Compose:
+
+```bash
+# No authentication (simplest)
+docker compose -f examples/docker-compose/docker-compose.no-auth.yml up
+
+# With pre-seeded credentials
+docker compose -f examples/docker-compose/docker-compose.with-creds.yml up
+```
+
+AWS CLI command examples are also available in [`examples/commands/`](examples/commands/):
+
+```bash
+# Basic queue operations (create, send, receive, delete)
+./examples/commands/quick-start.sh
+
+# FIFO queues + dead-letter queues
+./examples/commands/fifo-and-dlq.sh
+```
+
 ## Example Program
 
 A complete Go example demonstrating the queue library API is in [`apps/go/playground/sqs_example`](apps/go/playground/sqs_example/main.go):
@@ -147,6 +184,13 @@ opensqs/
 │       ├── store/               # Pluggable storage interface
 │       │   └── memory/          # In-memory store with HMAC receipts
 │       └── types/                # Message, attributes, constants
+├── deploy/
+│   └── helm/                    # Helm chart (deployment, service, configmap, PVC, ingress, HPA, PDB)
+├── examples/                   # Deployment examples (Docker, Docker Compose, Kubernetes, CLI commands)
+│   ├── docker/                 # Dockerfile examples (with/without auth)
+│   ├── docker-compose/         # Docker Compose examples (memory, SQLite)
+│   ├── kubernetes/             # Kubernetes manifests (with/without auth, persistent)
+│   └── commands/               # AWS CLI command scripts (quick-start, FIFO+DLQ, Bazel)
 └── tools/                       # Custom Bazel rules & dev tools
 ```
 

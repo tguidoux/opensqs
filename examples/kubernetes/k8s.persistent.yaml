@@ -1,0 +1,205 @@
+# Kubernetes — OpenSQS with SQLite persistence and initial credentials
+#
+# Purpose:
+#   Deploy OpenSQS with SQLite persistent storage so messages and queues
+#   survive pod restarts. Includes pre-seeded credentials via a Kubernetes
+#   Secret. Suitable for staging or small production workloads.
+#
+# Prerequisites:
+#   kubectl apply -f examples/kubernetes/k8s.secret.yaml
+#
+# Usage:
+#   kubectl apply -f examples/kubernetes/k8s.persistent.yaml
+#
+# Access:
+#   kubectl port-forward svc/opensqs 9324:9324 -n opensqs
+#
+# See: examples/kubernetes/README.md
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensqs-config
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 9324
+    sqs:
+      nodeAddress: "opensqs.opensqs.svc.cluster.local:9324"
+      accountId: "123456789012"
+      region: "us-east-1"
+      storageType: "sqlite"
+      sqlitePath: "/data/opensqs.db"
+      strictLimits: true
+    log:
+      level: "info"
+    health:
+      port: 8001
+    ui:
+      enabled: true
+      port: 9325
+    metrics:
+      enabled: true
+      port: 9326
+    environment: "prod"
+    auth:
+      enabled: true
+    queues:
+      autoCreate: true
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opensqs-data
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensqs
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensqs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opensqs
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opensqs
+          image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/opensqs/config.yaml"]
+          ports:
+            - name: sqs
+              containerPort: 9324
+              protocol: TCP
+            - name: ui
+              containerPort: 9325
+              protocol: TCP
+            - name: metrics
+              containerPort: 9326
+              protocol: TCP
+            - name: health
+              containerPort: 8001
+              protocol: TCP
+          env:
+            - name: SQS__SERVERSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: serverSecret
+            - name: SQS__AUTH__INITIALCREDENTIALS__0__LABEL
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: credLabel
+            - name: SQS__AUTH__INITIALCREDENTIALS__0__ACCESSKEYID
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: accessKeyId
+            - name: SQS__AUTH__INITIALCREDENTIALS__0__SECRETACCESSKEY
+              valueFrom:
+                secretKeyRef:
+                  name: opensqs-secrets
+                  key: secretAccessKey
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/opensqs
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: opensqs-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: opensqs-data
+        - name: tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensqs
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  type: ClusterIP
+  ports:
+    - name: sqs
+      port: 9324
+      targetPort: sqs
+      protocol: TCP
+    - name: ui
+      port: 9325
+      targetPort: ui
+      protocol: TCP
+    - name: metrics
+      port: 9326
+      targetPort: metrics
+      protocol: TCP
+    - name: health
+      port: 8001
+      targetPort: health
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: opensqs
