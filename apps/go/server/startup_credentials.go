@@ -41,6 +41,14 @@ func seedInitialCredentials(
 			accountID = defaultAccountID
 		}
 
+		// Check if the credential already exists (e.g. after a restart
+		// with persistent storage). Skip import if it does — this is
+		// not an error, the credential was seeded on a previous boot.
+		if existing, err := credStore.GetByAccessKeyID(ic.AccessKeyID); err == nil && existing != nil {
+			log.Infof("initial credential %q already exists (accessKeyId: %s), skipping import", label, ic.AccessKeyID)
+			continue
+		}
+
 		_, err := credStore.Import(label, ic.AccessKeyID, ic.SecretAccessKey, region, accountID)
 		if err != nil {
 			log.Fatalf("failed to import initial credential %q: %v", label, err)

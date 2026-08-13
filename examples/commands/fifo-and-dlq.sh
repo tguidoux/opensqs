@@ -20,8 +20,10 @@ OPENSQS_PORT="9324"
 ACCOUNT_ID="123456789012"
 REGION="us-east-1"
 
-AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-AKIAIOSFODNN7EXAMPLE}"
-AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}"
+# Credentials — match the ones in examples/docker/config.with-creds.yaml
+# If running without auth, these can be any dummy value.
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-AKIAIOSFODNN7EXAMPLE}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}"
 
 ENDPOINT="http://${OPENSQS_HOST}:${OPENSQS_PORT}"
 
@@ -35,8 +37,6 @@ echo ""
 echo ">>> Creating DLQ 'orders-dlq.fifo'..."
 DLQ_URL=$(aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs create-queue \
   --queue-name orders-dlq.fifo \
   --attributes "FifoQueue=true,ContentBasedDeduplication=true" \
@@ -48,8 +48,6 @@ echo ""
 
 DLQ_ARN=$(aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs get-queue-attributes \
   --queue-url "${DLQ_URL}" \
   --attribute-names QueueArn \
@@ -60,19 +58,29 @@ echo ""
 # ─── 3. Create the main FIFO queue with a redrive policy ─────────────────────
 
 echo ">>> Creating FIFO queue 'orders.fifo' with redrive policy..."
-REDDRIVE_POLICY=$(cat <<EOF
-{"deadLetterTargetArn":"${DLQ_ARN}","maxReceiveCount":"3"}
-EOF
-)
+
+# Build the redrive policy JSON
+REDDRIVE_POLICY="{\"deadLetterTargetArn\":\"${DLQ_ARN}\",\"maxReceiveCount\":\"3\"}"
+
+# Use a temp file for attributes to avoid shell quoting issues with the JSON redrive policy
+ATTRS_FILE=$(mktemp)
+python3 -c "
+import json
+attrs = {
+    'FifoQueue': 'true',
+    'ContentBasedDeduplication': 'true',
+    'RedrivePolicy': '${REDDRIVE_POLICY}'
+}
+print(json.dumps(attrs))
+" > "${ATTRS_FILE}"
 
 QUEUE_URL=$(aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs create-queue \
   --queue-name orders.fifo \
-  --attributes "FifoQueue=true,ContentBasedDeduplication=true,RedrivePolicy=${REDDRIVE_POLICY//\"/\\\"}" \
+  --attributes file://"${ATTRS_FILE}" \
   --query 'QueueUrl' --output text)
+rm -f "${ATTRS_FILE}"
 echo "    Queue URL: ${QUEUE_URL}"
 echo ""
 
@@ -82,8 +90,6 @@ echo ">>> Sending 3 ordered messages (messageGroupId: order-batch-1)..."
 for i in 1 2 3; do
   MSG_ID=$(aws --endpoint-url "${ENDPOINT}" \
     --region "${REGION}" \
-    --access-key-id "${AWS_ACCESS_KEY_ID}" \
-    --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
     sqs send-message \
     --queue-url "${QUEUE_URL}" \
     --message-body "{\"step\":${i},\"action\":\"process\"}" \
@@ -100,8 +106,6 @@ echo ">>> Receiving messages (should be in order 1, 2, 3)..."
 for i in 1 2 3; do
   MSG=$(aws --endpoint-url "${ENDPOINT}" \
     --region "${REGION}" \
-    --access-key-id "${AWS_ACCESS_KEY_ID}" \
-    --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
     sqs receive-message \
     --queue-url "${QUEUE_URL}" \
     --max-number-of-messages 1 \
@@ -116,8 +120,6 @@ for i in 1 2 3; do
   # (simulating failed processing)
   aws --endpoint-url "${ENDPOINT}" \
     --region "${REGION}" \
-    --access-key-id "${AWS_ACCESS_KEY_ID}" \
-    --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
     sqs change-message-visibility \
     --queue-url "${QUEUE_URL}" \
     --receipt-handle "${RECEIPT}" \
@@ -134,13 +136,9 @@ echo ""
 echo ">>> Cleaning up..."
 aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs delete-queue --queue-url "${QUEUE_URL}" 2>/dev/null || true
 aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs delete-queue --queue-url "${DLQ_URL}" 2>/dev/null || true
 echo "    Done."
 echo ""

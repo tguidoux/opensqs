@@ -12,8 +12,9 @@
 #
 #   Or use the pre-built image:
 #   docker run -p 9324:9324 -p 9325:9325 \
-#     ghcr.io/tguidoux/opensqs/opensqs-server:latest \
-#     --config /etc/opensqs/config.yaml
+#     -v $(pwd)/examples/docker/config.no-auth.yaml:/etc/opensqs/config.yaml:ro \
+#     -e CONFIG_PATH=/etc/opensqs/config.yaml \
+#     ghcr.io/tguidoux/opensqs/opensqs-server:latest
 #
 # Ports:
 #   9324 — SQS API
@@ -24,5 +25,7 @@
 FROM ghcr.io/tguidoux/opensqs/opensqs-server:latest
 
 COPY config.no-auth.yaml /etc/opensqs/config.yaml
+
+ENV CONFIG_PATH=/etc/opensqs/config.yaml
 
 EXPOSE 9324 9325

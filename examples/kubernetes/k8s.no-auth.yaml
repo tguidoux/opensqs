@@ -89,7 +89,9 @@ spec:
         - name: opensqs
           image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
           imagePullPolicy: IfNotPresent
-          args: ["--config", "/etc/opensqs/config.yaml"]
+          env:
+            - name: CONFIG_PATH
+              value: /etc/opensqs/config.yaml
           ports:
             - name: sqs
               containerPort: 9324

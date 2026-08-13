@@ -33,7 +33,8 @@ services:
     volumes:
       - ./config.sqlite.yaml:/etc/opensqs/config.yaml:ro
       - opensqs-data:/data
-    command: ["--config", "/etc/opensqs/config.yaml"]
+    environment:
+      - CONFIG_PATH=/etc/opensqs/config.yaml
     restart: unless-stopped
 
 volumes:

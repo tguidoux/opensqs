@@ -35,5 +35,6 @@ services:
       - "9326:9326"  # Metrics
     volumes:
       - ./config.with-creds.yaml:/etc/opensqs/config.yaml:ro
-    command: ["--config", "/etc/opensqs/config.yaml"]
+    environment:
+      - CONFIG_PATH=/etc/opensqs/config.yaml
     restart: unless-stopped

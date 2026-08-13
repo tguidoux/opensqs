@@ -30,8 +30,7 @@ examples/
 └── commands/                  # Shell scripts with AWS CLI commands
     ├── README.md
     ├── quick-start.sh         # Basic create/send/receive/delete
-    ├── fifo-and-dlq.sh        # FIFO queues + dead-letter queues
-    └── run-with-bazel.sh      # Build & run from source with Bazel
+    └── fifo-and-dlq.sh        # FIFO queues + dead-letter queues
 ```
 
 ## Quick Reference
@@ -53,7 +52,6 @@ examples/
 - **Quickest start:** [Docker Compose — No Auth](docker-compose/docker-compose.no-auth.yml)
 - **With realistic auth:** [Docker Compose — With Creds](docker-compose/docker-compose.with-creds.yml)
 - **With persistent storage:** [Docker Compose — SQLite](docker-compose/docker-compose.sqlite.yml)
-- **From source:** [Run with Bazel](commands/run-with-bazel.sh)
 
 ### For Kubernetes
 - **Dev cluster:** [K8s — No Auth](kubernetes/k8s.no-auth.yaml)

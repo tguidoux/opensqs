@@ -23,8 +23,8 @@ REGION="us-east-1"
 
 # Credentials — match the ones in examples/docker/config.with-creds.yaml
 # If running without auth, these can be any dummy value.
-AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-AKIAIOSFODNN7EXAMPLE}"
-AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}"
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-AKIAIOSFODNN7EXAMPLE}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}"
 
 ENDPOINT="http://${OPENSQS_HOST}:${OPENSQS_PORT}"
 
@@ -44,8 +44,6 @@ echo ""
 echo ">>> Creating queue 'my-queue'..."
 QUEUE_URL=$(aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs create-queue --queue-name my-queue \
   --query 'QueueUrl' --output text)
 echo "    Queue URL: ${QUEUE_URL}"
@@ -56,12 +54,10 @@ echo ""
 echo ">>> Sending a message..."
 SEND_RESULT=$(aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs send-message \
   --queue-url "${QUEUE_URL}" \
   --message-body '{"event":"order.created","orderId":"12345"}' \
-  --message-attribute "EventType=String:order.created" \
+  --message-attributes '{"EventType":{"DataType":"String","StringValue":"order.created"}}' \
   --query 'MessageId' --output text)
 echo "    Message ID: ${SEND_RESULT}"
 echo ""
@@ -71,8 +67,6 @@ echo ""
 echo ">>> Receiving a message..."
 RECEIVE_RESULT=$(aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs receive-message \
   --queue-url "${QUEUE_URL}" \
   --max-number-of-messages 1 \
@@ -87,8 +81,6 @@ if [ -n "${RECEIPT_HANDLE}" ]; then
   echo ">>> Deleting the message..."
   aws --endpoint-url "${ENDPOINT}" \
     --region "${REGION}" \
-    --access-key-id "${AWS_ACCESS_KEY_ID}" \
-    --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
     sqs delete-message \
     --queue-url "${QUEUE_URL}" \
     --receipt-handle "${RECEIPT_HANDLE}"
@@ -103,8 +95,6 @@ echo ""
 echo ">>> Listing queues..."
 aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs list-queues
 echo ""
 
@@ -113,8 +103,6 @@ echo ""
 echo ">>> Getting queue attributes..."
 aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs get-queue-attributes \
   --queue-url "${QUEUE_URL}" \
   --attribute-names All
@@ -125,8 +113,6 @@ echo ""
 echo ">>> Purging the queue..."
 aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs purge-queue --queue-url "${QUEUE_URL}"
 echo "    Purged."
 echo ""
@@ -136,8 +122,6 @@ echo ""
 echo ">>> Deleting the queue..."
 aws --endpoint-url "${ENDPOINT}" \
   --region "${REGION}" \
-  --access-key-id "${AWS_ACCESS_KEY_ID}" \
-  --secret-access-key "${AWS_SECRET_ACCESS_KEY}" \
   sqs delete-queue --queue-url "${QUEUE_URL}"
 echo "    Deleted."
 echo ""

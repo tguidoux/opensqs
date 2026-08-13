@@ -60,14 +60,14 @@ You can skip the Dockerfile and mount a config file directly:
 # No auth
 docker run -p 9324:9324 -p 9325:9325 \
   -v $(pwd)/examples/docker/config.no-auth.yaml:/etc/opensqs/config.yaml:ro \
-  ghcr.io/tguidoux/opensqs/opensqs-server:latest \
-  --config /etc/opensqs/config.yaml
+  -e CONFIG_PATH=/etc/opensqs/config.yaml \
+  ghcr.io/tguidoux/opensqs/opensqs-server:latest
 
 # With creds
 docker run -p 9324:9324 -p 9325:9325 \
   -v $(pwd)/examples/docker/config.with-creds.yaml:/etc/opensqs/config.yaml:ro \
-  ghcr.io/tguidoux/opensqs/opensqs-server:latest \
-  --config /etc/opensqs/config.yaml
+  -e CONFIG_PATH=/etc/opensqs/config.yaml \
+  ghcr.io/tguidoux/opensqs/opensqs-server:latest
 ```
 
 ## Configuration Files
@@ -95,9 +95,9 @@ For persistent storage, change `storageType` to `sqlite` or `badger` and mount a
 ```bash
 docker run -p 9324:9324 -p 9325:9325 \
   -v $(pwd)/my-config.yaml:/etc/opensqs/config.yaml:ro \
+  -e CONFIG_PATH=/etc/opensqs/config.yaml \
   -v opensqs-data:/data \
-  ghcr.io/tguidoux/opensqs/opensqs-server:latest \
-  --config /etc/opensqs/config.yaml
+  ghcr.io/tguidoux/opensqs/opensqs-server:latest
 ```
 
 ## Ports

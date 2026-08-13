@@ -49,24 +49,6 @@ chmod +x examples/commands/fifo-and-dlq.sh
 6. After 3 receives, messages should be redrived to the DLQ
 7. Cleans up both queues
 
-### 3. Run with Bazel (`run-with-bazel.sh`)
-
-Commands for building and running OpenSQS from source using Bazel. No Docker required.
-
-**Prerequisites:** [Bazelisk](https://github.com/bazelbuild/bazelisk) installed.
-
-```bash
-chmod +x examples/commands/run-with-bazel.sh
-./examples/commands/run-with-bazel.sh
-```
-
-**What it shows:**
-- Cloning and initializing the workspace
-- Running the server: `bazel run //apps/go/server:opensqs-server`
-- Running Go playground examples (basic, phase 2, FIFO, DLQ)
-- Building and loading the Docker image
-- Running tests
-
 ## Environment Variables
 
 All scripts use these environment variables (with defaults):
