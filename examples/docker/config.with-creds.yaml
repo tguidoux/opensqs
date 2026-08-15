@@ -1,0 +1,53 @@
+# OpenSQS configuration — with initial credentials
+#
+# This config enables credential-based auth and pre-seeds the credential
+# store with a known AWS-style key pair at startup. Your AWS CLI or SDK
+# can use these credentials from the very first request.
+#
+# Use this for:
+#   - Local development with realistic auth flow
+#   - Integration tests that need stable credentials
+#   - Teams that want to share a known credential set
+#
+# IMPORTANT: The credentials below are AWS documentation example keys.
+# Replace them with your own in any non-trivial deployment.
+# Never commit real credentials to source control.
+
+server:
+  host: "0.0.0.0"
+  port: 9324
+
+sqs:
+  nodeAddress: "localhost:9324"
+  accountId: "123456789012"
+  region: "us-east-1"
+  storageType: "memory"
+  strictLimits: true
+  serverSecret: "dev-only-not-for-production"
+
+log:
+  level: "info"
+
+ui:
+  enabled: true
+  port: 9325
+
+metrics:
+  enabled: true
+  port: 9326
+
+environment: "local"
+
+# Authentication enabled with pre-seeded credentials
+auth:
+  enabled: true
+  initialCredentials:
+    - label: "dev-access-key"
+      accessKeyId: "AKIAIOSFODNN7EXAMPLE"
+      secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+      # region: "us-east-1"        # optional, defaults to sqs.region
+      # accountId: "123456789012"  # optional, defaults to sqs.accountId
+
+# Auto-create queues on first access
+queues:
+  autoCreate: true

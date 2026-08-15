@@ -54,6 +54,11 @@ tools/
 ├── ci/                       # CI tooling (affected target detection)
 └── platforms/                # Bazel platform transitions (multi-arch)
 deploy/helm/                  # Helm chart for Kubernetes deployment
+examples/                     # Deployment examples (Docker, Docker Compose, Kubernetes, CLI commands)
+├── docker/                   # Dockerfile examples (with/without auth)
+├── docker-compose/           # Docker Compose examples (memory, SQLite)
+├── kubernetes/               # Kubernetes manifests (with/without auth, persistent)
+└── commands/                 # AWS CLI command scripts (quick-start, FIFO+DLQ, Bazel)
 ```
 
 ---

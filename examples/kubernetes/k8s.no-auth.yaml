@@ -1,0 +1,167 @@
+# Kubernetes — OpenSQS with no authentication
+#
+# Purpose:
+#   Deploy OpenSQS to a Kubernetes cluster with authentication disabled.
+#   Any pod in the cluster can send/receive messages without credentials.
+#   Useful for development clusters, testing, and internal tooling.
+#
+# Usage:
+#   kubectl apply -f examples/kubernetes/k8s.no-auth.yaml
+#
+# Access:
+#   kubectl port-forward svc/opensqs 9324:9324 -n default
+#   # Then: export AWS_ENDPOINT_URL=http://localhost:9324
+#   #       export AWS_ACCESS_KEY_ID=test
+#   #       export AWS_SECRET_ACCESS_KEY=test
+#   #       export AWS_DEFAULT_REGION=us-east-1
+#
+# See: examples/kubernetes/README.md
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensqs-config
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 9324
+    sqs:
+      nodeAddress: "opensqs.opensqs.svc.cluster.local:9324"
+      accountId: "123456789012"
+      region: "us-east-1"
+      storageType: "memory"
+      strictLimits: true
+      serverSecret: "dev-only-not-for-production"
+    log:
+      level: "info"
+    health:
+      port: 8001
+    ui:
+      enabled: true
+      port: 9325
+    metrics:
+      enabled: true
+      port: 9326
+    environment: "staging"
+    auth:
+      enabled: false
+    queues:
+      autoCreate: true
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensqs
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensqs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opensqs
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opensqs
+          image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CONFIG_PATH
+              value: /etc/opensqs/config.yaml
+          ports:
+            - name: sqs
+              containerPort: 9324
+              protocol: TCP
+            - name: ui
+              containerPort: 9325
+              protocol: TCP
+            - name: metrics
+              containerPort: 9326
+              protocol: TCP
+            - name: health
+              containerPort: 8001
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/opensqs
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: opensqs-config
+        - name: tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensqs
+  namespace: opensqs
+  labels:
+    app.kubernetes.io/name: opensqs
+spec:
+  type: ClusterIP
+  ports:
+    - name: sqs
+      port: 9324
+      targetPort: sqs
+      protocol: TCP
+    - name: ui
+      port: 9325
+      targetPort: ui
+      protocol: TCP
+    - name: metrics
+      port: 9326
+      targetPort: metrics
+      protocol: TCP
+    - name: health
+      port: 8001
+      targetPort: health
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: opensqs

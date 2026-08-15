@@ -1,0 +1,42 @@
+# Docker Compose — OpenSQS with SQLite persistence and initial credentials
+#
+# Purpose:
+#   Run OpenSQS with SQLite persistent storage so messages survive
+#   container restarts. Includes pre-seeded credentials for immediate
+#   access. Useful for development environments that need durability.
+#
+# Usage:
+#   docker compose -f examples/docker-compose/docker-compose.sqlite.yml up
+#
+# Endpoints:
+#   SQS API:  http://localhost:9324
+#   Web UI:   http://localhost:9325
+#   Metrics:  http://localhost:9326/metrics
+#
+# Credentials:
+#   AccessKeyId:     AKIAIOSFODNN7EXAMPLE
+#   SecretAccessKey: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+#
+# Data persistence:
+#   SQLite database is stored in a named volume at /data/opensqs.db
+#   Messages and queues survive container restarts.
+#
+# See: examples/docker-compose/README.md
+
+services:
+  opensqs:
+    image: ghcr.io/tguidoux/opensqs/opensqs-server:latest
+    ports:
+      - "9324:9324"  # SQS API
+      - "9325:9325"  # Web UI
+      - "9326:9326"  # Metrics
+    volumes:
+      - ./config.sqlite.yaml:/etc/opensqs/config.yaml:ro
+      - opensqs-data:/data
+    environment:
+      - CONFIG_PATH=/etc/opensqs/config.yaml
+    restart: unless-stopped
+
+volumes:
+  opensqs-data:
+    driver: local
