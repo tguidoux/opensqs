@@ -1,6 +1,6 @@
 module github.com/tguidoux/opensqs
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/dgraph-io/badger/v4 v4.9.6
@@ -8,7 +8,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 	modernc.org/sqlite v1.58.0
 )
 
