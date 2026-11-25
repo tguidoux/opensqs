@@ -40,6 +40,8 @@ data:
       enabled: {{ .Values.opensqs.metrics.enabled }}
       port: {{ .Values.opensqs.metrics.port }}
     environment: {{ .Values.opensqs.environment | quote }}
+    auth:
+      enabled: {{ .Values.opensqs.auth.enabled }}
     requestLogging:
       enabled: {{ .Values.opensqs.requestLogging.enabled }}
     rateLimit:
