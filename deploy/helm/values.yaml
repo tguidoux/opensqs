@@ -89,6 +89,11 @@ opensqs:
   # -- Log level: "debug", "info", "warn", "error"
   logLevel: "info"
 
+  # SigV4 authentication
+  auth:
+    # -- Require SigV4-signed requests
+    enabled: true
+
   # Health check server
   health:
     enabled: true
