@@ -8,7 +8,7 @@ module(name = "opensqs")
 # Setings
 ########################################
 
-GO_VERSION = "1.25.5"
+GO_VERSION = "1.26.11"
 
 ########################################
 # Generic deps
