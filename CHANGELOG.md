@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Repository moved to [tguidoux/openaws](https://github.com/tguidoux/openaws).** OpenSQS is now developed in the `openaws` monorepo (a collection of lightweight, self-hostable AWS-compatible services sharing components, build and deployment). The server lives at [apps/go/sqs](https://github.com/tguidoux/openaws/tree/main/apps/go/sqs), libraries in [pkgs/v1/sqs](https://github.com/tguidoux/openaws/tree/main/pkgs/v1/sqs), shared libraries in [pkgs/v1/common](https://github.com/tguidoux/openaws/tree/main/pkgs/v1/common), and the Helm chart in [deploy/helm/sqs](https://github.com/tguidoux/openaws/tree/main/deploy/helm/sqs). Go import paths change from `github.com/tguidoux/opensqs/...` to `github.com/tguidoux/openaws/...`, the container image is now `ghcr.io/tguidoux/openaws/sqs-server`, and new issues/PRs should be opened in [tguidoux/openaws](https://github.com/tguidoux/openaws). See [MOVED.md](MOVED.md).
+
 ### Added
 - Open-source repository preparation: LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY policy
 - GitHub Issue templates (bug report, feature request)
