@@ -1,5 +1,23 @@
 # OpenSQS
 
+> [!WARNING]
+> **⚠️ This repository has moved.**
+> OpenSQS now lives in the [tguidoux/openaws](https://github.com/tguidoux/openaws) monorepo — a collection of lightweight, self-hostable AWS-compatible services sharing components, build and deployment.
+>
+> **New locations:**
+> - Server application: <https://github.com/tguidoux/openaws/tree/main/apps/go/sqs>
+> - Queue libraries: <https://github.com/tguidoux/openaws/tree/main/pkgs/v1/sqs>
+> - Shared libraries: <https://github.com/tguidoux/openaws/tree/main/pkgs/v1/common>
+> - Helm chart: <https://github.com/tguidoux/openaws/tree/main/deploy/helm/sqs>
+> - Container image: `ghcr.io/tguidoux/openaws/sqs-server`
+>
+> **Migration notes:**
+> - Go import paths change from `github.com/tguidoux/opensqs/...` to `github.com/tguidoux/openaws/...`
+> - Container image names change (e.g. `ghcr.io/tguidoux/openaws/sqs-server`)
+> - Please open new issues and pull requests in [tguidoux/openaws](https://github.com/tguidoux/openaws)
+>
+> See [MOVED.md](MOVED.md) for details.
+
 [![CI](https://github.com/tguidoux/opensqs/actions/workflows/ci.yml/badge.svg)](https://github.com/tguidoux/opensqs/actions/workflows/ci.yml)
 [![Code Quality](https://github.com/tguidoux/opensqs/actions/workflows/code-quality.yml/badge.svg)](https://github.com/tguidoux/opensqs/actions/workflows/code-quality.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.25.5-00ADD8?logo=go)](https://go.dev/)
